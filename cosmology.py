@@ -1,55 +1,62 @@
 import math
 
 import numpy as np
-import matplotlib.pyplot as plt
 import pymaster as nmt
 import pyccl as ccl
 
 
-def get_covariance_gg_gg(field, gg_theory, gg_workspace, n_bands, covariance_workspace=None):
+def get_chi_squared(data, theory, covariance):
+    diff = data - theory
+    cov_inv = np.linalg.inv(covariance)
+    return diff.dot(cov_inv).dot(diff)
+
+
+def get_covariance_matrix(field, cl_theory, cl_workspace, n_bands, covariance_workspace=None):
     if not covariance_workspace:
         covariance_workspace = nmt.NmtCovarianceWorkspace()
         covariance_workspace.compute_coupling_coefficients(field, field, field, field)
 
-    covar_gg_gg = nmt.gaussian_covariance(
+    covariance = nmt.gaussian_covariance(
         covariance_workspace,
         0, 0, 0, 0,  # Spins of the 4 fields
-        [gg_theory],  # GG
-        [gg_theory],  # GG
-        [gg_theory],  # GG
-        [gg_theory],  # GG
-        gg_workspace,
-        wb=gg_workspace
+        [cl_theory],  # GG
+        [cl_theory],  # GG
+        [cl_theory],  # GG
+        [cl_theory],  # GG
+        cl_workspace,
+        wb=cl_workspace
     )
-    covar_gg_gg = covar_gg_gg.reshape([n_bands, 1, n_bands, 1])
-    return covar_gg_gg[:, 0, :, 0]
+    covariance = covariance.reshape([n_bands, 1, n_bands, 1])
+    return covariance[:, 0, :, 0]
 
 
-def get_theory_clustering_correlation(l_arr, z_arr, n_arr, bias_arr):
+def get_theory_correlations(l_arr, z_arr, n_arr, bias, scale_bias=False):
     cosmology = ccl.Cosmology(Omega_c=0.27, Omega_b=0.045, h=0.67, sigma8=0.83, n_s=0.96)
+    bias_arr = bias * np.ones(len(z_arr))
+    if scale_bias:
+        bias_arr = bias_arr / ccl.growth_factor(cosmology, 1. / (1 + z_arr))
     number_counts_tracer = ccl.NumberCountsTracer(cosmology, has_rsd=False, dndz=(z_arr, n_arr), bias=(z_arr, bias_arr))
-    correlation = ccl.angular_cl(cosmology, number_counts_tracer, number_counts_tracer, l_arr)
-    return correlation
+    lensing_tracer = ccl.WeakLensingTracer(cosmology, dndz=(z_arr, n_arr))
+    cmb_lensing_tracer = ccl.CMBLensingTracer(cosmology, 1091)
+    cl_gg = ccl.angular_cl(cosmology, number_counts_tracer, number_counts_tracer, l_arr)
+    cl_gk = ccl.angular_cl(cosmology, lensing_tracer, cmb_lensing_tracer, l_arr)
+    cl_kk = ccl.angular_cl(cosmology, cmb_lensing_tracer, cmb_lensing_tracer, l_arr)
+    return cl_gg, cl_gk, cl_kk
 
 
-def get_auto_correlation(map, mask, nside, l_max=None, normalize_map=True, with_shot_noise=True, mask_aposize=1.0,
-                         ells_per_bandpower=4):
+def get_data_correlations(map_counts, map_g, mask_g, map_cmb_k, mask_cmb_k, nside, l_max=None, with_shot_noise=True,
+                          mask_aposize=1.0, ells_per_bandpower=4):
     # Get shot noise for discrete objects
     shot_noise = 0
     if with_shot_noise:
-        shot_noise = get_shot_noise(map, mask)
-        print('Shot noise: {}'.format(shot_noise))
-    # Normalize counts for discrete objects
-    if normalize_map:
-        sky_mean = np.mean(map[np.nonzero(mask)])
-        map_to_correlate = (map - sky_mean) / sky_mean
-    else:
-        map_to_correlate = map
+        shot_noise = get_shot_noise(map_counts, mask_g)
     # Apodize mask  # TODO: should the apodization influence any other mask usage?
     if mask_aposize:
-        mask = nmt.mask_apodization(mask, mask_aposize, apotype='Smooth')
+        mask_g = nmt.mask_apodization(mask_g, mask_aposize, apotype='Smooth')
     # Get field
-    field = nmt.NmtField(mask, [map_to_correlate])
+    field_g = nmt.NmtField(mask_g, [map_g])
+    field_cmb_k = nmt.NmtField(mask_cmb_k, [map_cmb_k])
+    # field_cmb_t = nmt.NmtField(mask_cmb, [map_cmb_t])
     # Initialize binning scheme
     if l_max:
         ells = np.arange(l_max, dtype='int32')
@@ -63,41 +70,18 @@ def get_auto_correlation(map, mask, nside, l_max=None, normalize_map=True, with_
     else:
         binning = nmt.NmtBin.from_nside_linear(nside, ells_per_bandpower)
 
-    workspace = nmt.NmtWorkspace()
-    workspace.compute_coupling_matrix(field, field, binning)
-    cl_coupled = nmt.compute_coupled_cell(field, field)
-    cl_decoupled = workspace.decouple_cell(cl_coupled)
+    # Get all correlations
+    cl_coupled_gg, cl_decoupled_gg, workspace_gg = compute_master(field_g, field_g, binning)
+    cl_coupled_gk, cl_decoupled_gk, workspace_gk = compute_master(field_g, field_cmb_k, binning)
+    cl_coupled_kk, cl_decoupled_kk, workspace_kk = compute_master(field_cmb_k, field_cmb_k, binning)
 
     # Substract shot noise
-    cl_coupled = cl_coupled[0] - shot_noise
-    cl_decoupled = cl_decoupled[0] - shot_noise
+    cl_coupled_gg = cl_coupled_gg - shot_noise
+    cl_decoupled_gg = cl_decoupled_gg - shot_noise
 
     # Return correlation with substracted shot noise
-    return cl_coupled, cl_decoupled, workspace, binning, shot_noise, field
-
-
-def plot_correlation(binning, correlation, model_correlation=None, covariance_matrix=None, x_max=None, y_min=None,
-                     x_scale='linear', y_scale='linear'):
-    ell_arr = binning.get_effective_ells()
-    to_plot = np.fabs(correlation)
-
-    if covariance_matrix is not None:
-        y_err = [covariance_matrix[i, i] for i in range(covariance_matrix.shape[0])]
-        plt.errorbar(ell_arr, to_plot, yerr=y_err, fmt='ob', label='GG', markersize=2)
-    else:
-        plt.plot(ell_arr, to_plot, 'ob', label='GG', markersize=2)
-
-    if model_correlation is not None:
-        plt.plot(ell_arr, model_correlation, 'r', label='theory', markersize=2)
-
-    plt.xscale(x_scale)
-    plt.yscale(y_scale)
-    plt.xlim(xmax=x_max)
-    plt.ylim(ymin=y_min)
-    plt.xlabel('$\\ell$', fontsize=16)
-    plt.ylabel('$C_\\ell$', fontsize=16)
-    plt.legend(loc='upper right', ncol=2, labelspacing=0.1)
-    plt.show()
+    return field_g, field_cmb_k, cl_coupled_gg, cl_decoupled_gg, workspace_gg, cl_coupled_gk, cl_decoupled_gk, \
+           workspace_gk, cl_coupled_kk, cl_decoupled_kk, workspace_kk, binning, shot_noise
 
 
 def get_shot_noise(map, mask):
@@ -105,3 +89,11 @@ def get_shot_noise(map, mask):
     n_obj = np.sum(map[np.nonzero(mask)])
     shot_noise = 4.0 * math.pi * sky_frac / n_obj
     return shot_noise
+
+
+def compute_master(field_a, field_b, binning):
+    workspace = nmt.NmtWorkspace()
+    workspace.compute_coupling_matrix(field_a, field_b, binning)
+    cl_coupled = nmt.compute_coupled_cell(field_a, field_b)
+    cl_decoupled = workspace.decouple_cell(cl_coupled)
+    return cl_coupled[0], cl_decoupled[0], workspace
