@@ -26,16 +26,14 @@ def plot_hetdex_image(map, additional_mask=None, title=None, cmap='viridis', fwh
     plt.show()
 
 
-def plot_correlation(binning, correlation, model_correlation=None, covariance_matrix=None, x_max=None, y_min=None,
-                     x_scale='linear', y_scale='linear'):
-    ell_arr = binning.get_effective_ells()
-    to_plot = np.fabs(correlation)
-
+def plot_correlation(binning, correlation, model_correlation=None, covariance_matrix=None,
+                     x_max=None, y_min=None, label='gg', x_scale='linear', y_scale='linear'):
+    y_err = None
     if covariance_matrix is not None:
-        y_err = [covariance_matrix[i, i] for i in range(covariance_matrix.shape[0])]
-        plt.errorbar(ell_arr, to_plot, yerr=y_err, fmt='ob', label='GG', markersize=2)
-    else:
-        plt.plot(ell_arr, to_plot, 'ob', label='GG', markersize=2)
+        y_err = np.sqrt(np.diag(covariance_matrix))
+
+    ell_arr = binning.get_effective_ells()
+    plt.errorbar(ell_arr, np.fabs(correlation), yerr=y_err, fmt='ob', label='data', markersize=2)
 
     if model_correlation is not None:
         plt.plot(ell_arr, model_correlation, 'r', label='theory', markersize=2)
@@ -45,6 +43,6 @@ def plot_correlation(binning, correlation, model_correlation=None, covariance_ma
     plt.xlim(xmax=x_max)
     plt.ylim(ymin=y_min)
     plt.xlabel('$\\ell$', fontsize=16)
-    plt.ylabel('$C_\\ell$', fontsize=16)
+    plt.ylabel('$C_\\ell^{{{}}}$'.format(label), fontsize=16)
     plt.legend(loc='upper right', ncol=2, labelspacing=0.1)
     plt.show()
