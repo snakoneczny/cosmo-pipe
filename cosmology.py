@@ -5,23 +5,73 @@ import numpy as np
 import pymaster as nmt
 import pyccl as ccl
 import emcee
+import seaborn as sns
 
 from data_lotss import get_lotss_redshift_distribution
 
+import matplotlib.pyplot as plt
+from IPython.display import display, Math
 
-def run_emcee(sampler, position, max_iterations, autocorr_time_arr=None, reset=False, progress='notebook'):
-    if autocorr_time_arr is None:
-        autocorr_time_arr = []
 
-    if reset:
+def show_mcmc_report(sampler, autocorr_time_arr, labels):
+    print('Mean acceptance fraction: {}'.format(np.mean(sampler.acceptance_fraction)))
+    plot_mean_tau(autocorr_time_arr)
+
+    tau = sampler.get_autocorr_time(tol=0)
+    burnin = int(2 * np.max(tau))
+    thin = 5  # int(0.5 * np.min(tau))
+    samples = sampler.get_chain(discard=burnin, flat=True, thin=thin)
+    log_prob_samples = sampler.get_log_prob(discard=burnin, flat=True, thin=thin)
+    #     log_prior_samples = sampler.get_blobs(discard=burnin, flat=True, thin=thin)
+
+    print('burn-in: {0}'.format(burnin))
+    print('thin: {0}'.format(thin))
+    print('flat chain shape: {0}'.format(samples.shape))
+    print('flat log prob shape: {0}'.format(log_prob_samples.shape))
+    #     print('flat log prior shape: {0}'.format(log_prior_samples.shape))
+
+    # all_samples = np.concatenate(
+    #     (samples, log_prob_samples[:, None], log_prior_samples[:, None]), axis=1
+    # )
+
+    for i in range(samples.shape[1]):
+        mcmc = np.percentile(samples[:, i], [16, 50, 84])
+        q = np.diff(mcmc)
+        txt = '\mathrm{{{3}}} = {0:.3f}_{{-{1:.3f}}}^{{{2:.3f}}}'
+        txt = txt.format(mcmc[1], q[0], q[1], labels[i])
+        display(Math(txt))
+
+    #  r'$\sigma_8$' r'$b_g$' pretty print map
+    sns.jointplot(samples[:, 1], samples[:, 0], kind='kde', stat_func=None).set_axis_labels(labels[1], labels[0])
+    sns.jointplot(log_prob_samples, samples[:, 0], kind='kde', stat_func=None).set_axis_labels(r'log prob', labels[0])
+    sns.jointplot(log_prob_samples, samples[:, 1], kind='kde', stat_func=None).set_axis_labels(r'log prob', labels[1])
+    plt.show()
+
+
+def plot_mean_tau(autocorr_time_arr):
+    n = np.arange(1, len(autocorr_time_arr) + 1)
+    plt.plot(n, n / 100.0, '--k')
+    plt.plot(n, autocorr_time_arr)
+    plt.xlabel('number of steps')
+    plt.ylabel(r'mean $\hat{\tau}$')
+    plt.show()
+
+
+def run_emcee(sampler, position, max_iterations, tau_filename=None, continue_sampling=True, progress=True):
+    tau_arr = np.load(tau_filename) if (os.path.isfile(tau_filename) and continue_sampling) else np.array([])
+
+    if not continue_sampling:
         sampler.reset()
 
-    for sample in sampler.sample(position, iterations=max_iterations, progress=progress):
+    for _ in sampler.sample(position, iterations=max_iterations, progress=progress):
         tau = sampler.get_autocorr_time(tol=0)
-        autocorr_time_arr.append(np.mean(tau))
+        tau_arr = np.append(tau_arr, [np.mean(tau)])
 
-        if len(autocorr_time_arr) > 1:
-            tau_change = np.abs(autocorr_time_arr[-2] - tau) / tau
+        # TODO: make sure it is not too long
+        np.save(tau_filename, tau_arr)
+
+        if len(tau_arr) > 1:
+            tau_change = np.abs(tau_arr[-2] - tau) / tau
             converged = np.all(tau * 100 < sampler.iteration)
             converged &= np.all(tau_change < 0.01)
 
@@ -31,16 +81,17 @@ def run_emcee(sampler, position, max_iterations, autocorr_time_arr=None, reset=F
             if converged:
                 break
 
-    return autocorr_time_arr
+    return tau_arr
 
 
-def init_emcee_sampler(p0_walkers, arg_names, log_prob_function, default_params, ells, data, icov, filename, pool=None):
+def init_emcee_sampler(p0_walkers, arg_names, log_prob_function, default_params, ells, data, icov, filename,
+                       continue_sampling=True, pool=None):
     args = [arg_names, default_params, ells, data, icov]
     n_walkers = p0_walkers.shape[0]
     n_dim = p0_walkers.shape[1]
-    file_path = os.path.join('../outputs/MCMC', filename)
-    backend = emcee.backends.HDFBackend(file_path)
-    backend.reset(n_walkers, n_dim)
+    backend = emcee.backends.HDFBackend(filename)
+    if not continue_sampling:
+        backend.reset(n_walkers, n_dim)
     emcee_sampler = emcee.EnsembleSampler(n_walkers, n_dim, log_prob_function, backend=backend, args=args, pool=pool)
     return emcee_sampler
 
