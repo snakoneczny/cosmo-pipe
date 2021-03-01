@@ -23,61 +23,6 @@ def get_lotss_redshift_distribution(z_tail):
     return z_arr, n_arr
 
 
-def get_lotss_hetdex_map(lotss_hetdex_data, nside=2048):
-    counts_map, _, _ = get_map(lotss_hetdex_data['RA'].values, lotss_hetdex_data['DEC'].values, nside=nside)
-    mask = get_lotss_hetdex_mask(nside)
-    counts_map = get_masked_map(counts_map, mask)
-
-    # Get noise in larger bins
-    noise_map, _, _ = get_mean_map(lotss_hetdex_data['RA'].values, lotss_hetdex_data['DEC'].values,
-                                   lotss_hetdex_data['Isl_rms'].values, nside=256)
-    # Fill missing pixels with mean noise value  # TODO: print number of missing pixels and sky area of those
-    mean_noise = noise_map[~np.isnan(noise_map)].mean()
-    noise_map = np.nan_to_num(noise_map, nan=mean_noise)
-    noise_map = get_masked_map(noise_map, hp.ud_grade(mask, nside_out=256))
-
-    return counts_map, mask, noise_map
-
-
-# TODO: process low resolution images?
-def get_lotss_hetdex_mask(nside):
-    npix = hp.nside2npix(nside)  # 12 * nside ^ 2
-    mask = np.zeros(npix, dtype=np.float)
-    pointings = np.loadtxt(os.path.join(DATA_PATH, 'LoTSS/DR1/pointings.txt'))
-    pointings_to_skip = [[164.633, 54.685], [211.012, 49.912], [221.510, 47.461], [225.340, 47.483], [227.685, 52.515]]
-    radius = 0.0296706
-    for ra, dec in pointings:
-        if [ra, dec] in pointings_to_skip:
-            continue
-        theta, phi = np.radians(-dec + 90.), np.radians(ra)
-        vec = hp.pixelfunc.ang2vec(theta, phi, lonlat=False)
-        indices = hp.query_disc(nside, vec, radius)
-        for i in indices:
-            mask[i] = 1
-    return mask
-
-
-def get_lotss_hetdex_data():
-    data_path = os.path.join(DATA_PATH, 'LoTSS/DR1', 'LOFAR_HBA_T1_DR1_merge_ID_optical_f_v1.2.fits')
-    data = read_fits_to_pandas(data_path)
-    data = get_lotss_hetdex_subsample(data)
-    return data
-
-
-def get_lotss_hetdex_subsample(data):
-    print('Original LoTSS hetdex datashape: {}'.format(data.shape))
-    # With redshift
-    data = data.dropna(subset=['z_best'])
-    print('Redshift available: {}'.format(data.shape))
-    # S > 2 mJy
-    data = data.loc[data['Total_flux'] > 2]
-    print('Total flux of S > 2mJy: {}'.format(data.shape))
-    # discard S/N < 5
-    data = data.loc[data['Total_flux'] / data['E_Total_flux'] > 5]
-    print('S/N > 5: {}'.format(data.shape))
-    return data
-
-
 def get_lotss_noise_weight_map(lotss_noise_map, lotss_mask, flux_min_cut, nside_out):
     n_bins = 1000
     flux_max = 2000
@@ -135,3 +80,57 @@ def flux_151_to_144(s_151):
     spectral_index = -0.7
     s_144 = s_151 * math.pow(144, spectral_index) / math.pow(151, spectral_index)
     return s_144
+
+
+def get_lotss_hetdex_map(lotss_hetdex_data, nside=2048):
+    counts_map, _, _ = get_map(lotss_hetdex_data['RA'].values, lotss_hetdex_data['DEC'].values, nside=nside)
+    mask = get_lotss_hetdex_mask(nside)
+    counts_map = get_masked_map(counts_map, mask)
+
+    # Get noise in larger bins
+    noise_map, _, _ = get_mean_map(lotss_hetdex_data['RA'].values, lotss_hetdex_data['DEC'].values,
+                                   lotss_hetdex_data['Isl_rms'].values, nside=256)
+    # Fill missing pixels with mean noise value  # TODO: print number of missing pixels and sky area of those
+    mean_noise = noise_map[~np.isnan(noise_map)].mean()
+    noise_map = np.nan_to_num(noise_map, nan=mean_noise)
+    noise_map = get_masked_map(noise_map, hp.ud_grade(mask, nside_out=256))
+
+    return counts_map, mask, noise_map
+
+
+# TODO: process low resolution images?
+def get_lotss_hetdex_mask(nside):
+    npix = hp.nside2npix(nside)  # 12 * nside ^ 2
+    mask = np.zeros(npix, dtype=np.float)
+    pointings = np.loadtxt(os.path.join(DATA_PATH, 'LoTSS/DR1/pointings.txt'))
+    pointings_to_skip = [[164.633, 54.685], [211.012, 49.912], [221.510, 47.461], [225.340, 47.483], [227.685, 52.515]]
+    radius = math.radians(1.7)  # 0.0296706
+    for ra, dec in pointings:
+        if [ra, dec] in pointings_to_skip:
+            continue
+        theta, phi = np.radians(-dec + 90.), np.radians(ra)
+        vec = hp.pixelfunc.ang2vec(theta, phi, lonlat=False)
+        indices = hp.query_disc(nside, vec, radius)
+        mask[indices] = 1
+    return mask
+
+
+def get_lotss_hetdex_data():
+    data_path = os.path.join(DATA_PATH, 'LoTSS/DR1', 'LOFAR_HBA_T1_DR1_merge_ID_optical_f_v1.2.fits')
+    data = read_fits_to_pandas(data_path)
+    data = get_lotss_hetdex_subsample(data)
+    return data
+
+
+def get_lotss_hetdex_subsample(data):
+    print('Original LoTSS hetdex datashape: {}'.format(data.shape))
+    # With redshift
+    data = data.dropna(subset=['z_best'])
+    print('Redshift available: {}'.format(data.shape))
+    # S > 2 mJy
+    data = data.loc[data['Total_flux'] > 2]
+    print('Total flux of S > 2mJy: {}'.format(data.shape))
+    # discard S/N < 5
+    data = data.loc[data['Total_flux'] / data['E_Total_flux'] > 5]
+    print('S/N > 5: {}'.format(data.shape))
+    return data

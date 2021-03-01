@@ -3,9 +3,11 @@ import os
 import healpy as hp
 import numpy as np
 from healpy import Rotator
+import pymaster as nmt
+import pandas as pd
 
 from env_config import DATA_PATH
-from utils import struct, get_masked_map, tansform_map_and_mask_to_nside, read_fits_to_pandas
+from utils import struct, get_masked_map, tansform_map_and_mask_to_nside
 
 cmb_columns_idx = struct(
     I_STOKES=0,
@@ -21,7 +23,7 @@ cmb_columns_idx = struct(
 )
 
 
-def get_cmb_map(nside=None):
+def get_cmb_temperature_map(nside=None):
     filename = 'COM_CMB_IQU-smica_2048_R3.00_full.fits'
     map = hp.read_map(os.path.join(DATA_PATH, 'Planck2018', filename), field=cmb_columns_idx.I_STOKES)
     mask = hp.read_map(os.path.join(DATA_PATH, 'Planck2018', filename), field=cmb_columns_idx.TMASK)
@@ -30,46 +32,45 @@ def get_cmb_map(nside=None):
     return map, mask
 
 
-def get_cmb_lensing_map(nside=None, fwhm=0):
-    folder_path = os.path.join(DATA_PATH, 'Planck2018/COM_Lensing_4096_R3.00')
-    map_path = os.path.join(folder_path, 'MV', 'dat_klm.fits')
+def get_cmb_lensing_map(nside=None):
+    folder_path = os.path.join(DATA_PATH, 'Planck2018/COM_Lensing_2048_R2.00')
+    map_path = os.path.join(folder_path, 'dat_klm.fits')
     mask_path = os.path.join(folder_path, 'mask.fits')
 
+    klm = hp.read_alm(map_path)
+    map = hp.alm2map(klm, nside)
+
     mask = hp.read_map(mask_path)
-
-    klm = read_fits_to_pandas(map_path)
-
-    # l_max = m_max = 4096  # 2048
-    # n_max = int(m_max * (2 * l_max + 1 - m_max) / 2 + l_max + 1)
-    # klm_max = klm.head(n_max)
-
-    # l_min = m_min = 8
-    # n_min = int(m_min * (2 * l_min + 1 - m_min) / 2 + l_min + 1)
-    # klm_min = klm.head(n_min)
-
-    # klm_max = np.array([complex(real, imag) for (real, imag) in zip(klm_max['real'], klm_max['imag'])])
-    # map_max = hp.sphtfunc.alm2map(klm_max, nside=nside, lmax=None, mmax=None, pixwin=False, fwhm=fwhm, sigma=None,
-    #                               pol=True, inplace=False, verbose=True)
-
-    # klm_min = np.array([complex(real, imag) for (real, imag) in zip(klm_min['real'], klm_min['imag'])])
-    # map_min = hp.sphtfunc.alm2map(klm_min, nside=nside, lmax=None, mmax=None, pixwin=False, fwhm=fwhm, sigma=None,
-    #                                  pol=True, inplace=False, verbose=True)
-
-    # map = map_max - map_min
-
-    klm = np.array([complex(real, imag) for (real, imag) in zip(klm['real'], klm['imag'])])
-    map = hp.sphtfunc.alm2map(klm, nside=nside, lmax=None, mmax=None, pixwin=False, fwhm=fwhm, sigma=None,
-                              pol=True, inplace=False, verbose=True)
-
-    # map = hp.sphtfunc.smoothing(map, fwhm=0.0174533, sigma=None, beam_window=None, pol=True, iter=3, lmax=None,
-    #                             mmax=None, use_weights=False, use_pixel_weights=False, datapath=None, verbose=True)
-
+    mask = nmt.mask_apodization(mask, 0.2, apotype='C1')
     mask = hp.ud_grade(mask, nside_out=nside)
+    mask[mask < 0.1] = 0  # Visualization purpose
 
     rotator = Rotator(coord=['G', 'C'])
     map = rotator.rotate_map_pixel(map)
     mask = rotator.rotate_map_pixel(mask)
 
     map = get_masked_map(map, mask)
-
     return map, mask
+
+
+def get_cmb_lensing_noise(nside):
+    l_arr = np.arange(3 * nside)
+    # cl_f = np.loadtxt(os.path.join(args.path_planck, 'nlkk.dat'), unpack=True)
+    # cl = np.zeros(len(l_arr))
+    # lmax = min(3*args.nside-1, int(cl_f[0, -1]))
+    # cl[int(cl_f[0, 0]):lmax+1] = cl_f[2][cl_f[0] <= lmax]
+    # cls_th['kk'] = cl
+
+    path = os.path.join(DATA_PATH, 'Planck2018/COM_Lensing_2048_R2.00/nlkk.dat')
+    data = np.loadtxt(path, unpack=False)
+    data = pd.DataFrame(data, columns=['l', 'nl', 'cl+nl'])
+
+    l_min = int(data['l'][0])
+    l_max = min(l_arr[-1], data['l'].values[-1])
+    noise_l_arr = np.arange(l_min, l_max + 1)
+
+    noise = np.zeros(len(l_arr))
+    # kk_theory_2[kk_l_arr] = kk_theory[kk_l_arr]
+    noise[noise_l_arr] += data['nl'].values[:l_max - l_min + 1]
+
+    return noise
