@@ -10,35 +10,31 @@ HETDEX_LON_RANGE = [158, 234]
 HETDEX_LAT_RANGE = [43, 60]
 
 
-def plot_correlations(experiment, x_scale='linear', y_scale='linear'):
-    for spectra_symbol in experiment.all_correlation_symbols:
-        # noise = experiment.noise_curves[spectra_symbol] if spectra_symbol == 'gg' else 0
-        plot_correlation(experiment.binning, experiment.data_correlations[spectra_symbol] - experiment.noise_decoupled[spectra_symbol],
-                         model_correlation=experiment.theory_correlations[spectra_symbol] - experiment.noise_curves[spectra_symbol],
-                         covariance_matrix=experiment.covariance_matrices.get(
-                             '-'.join([spectra_symbol, spectra_symbol])),
-                         x_max=500, x_scale=x_scale, y_scale=y_scale, label=spectra_symbol)
-
-
-def plot_correlation(binning, correlation, model_correlation=None, covariance_matrix=None, x_max=None, y_min=None,
-                     label='gg', x_scale='linear', y_scale='linear'):
+def plot_correlation(experiment, correlation_symbol, x_min=0, x_max=None, y_min=None, y_max=None, x_scale='linear',
+                     y_scale='linear'):
     y_err = None
-    if covariance_matrix is not None:
-        y_err = np.sqrt(np.diag(covariance_matrix))
+    covariance_symbol = '-'.join([correlation_symbol, correlation_symbol])
+    if experiment.covariance_matrices.get(covariance_symbol) is not None:
+        y_err = np.sqrt(np.diag(experiment.covariance_matrices[covariance_symbol]))
 
-    ell_arr = binning.get_effective_ells()
-    plt.errorbar(ell_arr, np.fabs(correlation), yerr=y_err, fmt='ob', label='data', markersize=2)
+    ell_arr = experiment.binning.get_effective_ells()
 
-    if model_correlation is not None:
-        plt.plot(model_correlation, 'r', label='theory', markersize=2)
+    # Data
+    data_to_plot = experiment.data_correlations[correlation_symbol] - experiment.noise_decoupled[correlation_symbol]
+    plt.errorbar(ell_arr, data_to_plot, yerr=y_err, fmt='ob', label='data', markersize=2)
+
+    # Theory
+    data_to_plot = experiment.theory_correlations[correlation_symbol] - experiment.noise_curves[correlation_symbol]
+    plt.plot(experiment.l_arr, data_to_plot, 'r', label='theory', markersize=2)
 
     plt.xscale(x_scale)
     plt.yscale(y_scale)
-    plt.xlim(xmax=x_max)
-    plt.ylim(ymin=y_min)
+    plt.xlim(xmin=x_min, xmax=x_max)
+    plt.ylim(ymin=y_min, ymax=y_max)
     plt.xlabel('$\\ell$', fontsize=16)
-    plt.ylabel('$C_\\ell^{{{}}}$'.format(label), fontsize=16)
+    plt.ylabel('$C_\\ell^{{{}}}$'.format(correlation_symbol), fontsize=16)
     plt.legend(loc='upper right', ncol=2, labelspacing=0.1)
+    plt.grid()
     plt.show()
 
 
@@ -63,11 +59,9 @@ def plot_hetdex_image(map, additional_mask=None, title=None, cmap='viridis', fwh
         map = add_mask(map, additional_mask)
 
     hp.visufunc.cartview(map=map, xsize=1000, lonra=HETDEX_LON_RANGE, latra=HETDEX_LAT_RANGE, title=title,
-                         cmap=cmap, badcolor='gray', bgcolor='white', cbar=True, coord='C', norm=norm)
-    # fig = plt.gcf()
-    # ax = plt.gca()
-    # image = ax.get_images()[0]
-    # fig.colorbar(image, orientation='horizontal', aspect=40, pad=0.08, ax=ax)
-    # plt.xlabel('R.A.')
-    # plt.ylabel('dec.')
+                         cmap=cmap, badcolor='gray', bgcolor='white', cbar=False, coord='C', norm=norm)
+    fig = plt.gcf()
+    ax = plt.gca()
+    image = ax.get_images()[0]
+    fig.colorbar(image, orientation='horizontal', aspect=40, pad=0.08, ax=ax)
     plt.show()

@@ -28,8 +28,6 @@ def get_lotss_noise_weight_map(lotss_noise_map, lotss_mask, flux_min_cut, nside_
     flux_max = 2000
     skads = get_skads_sim_data()
     fluxes = skads['S_144'].loc[skads['S_144'] < flux_max]
-    #     skads['S_144'].loc[(skads['S_144'] < flux_max)].hist(bins=100)
-    #     plt.yscale('log')
 
     hist, bin_edges = np.histogram(fluxes, bins=n_bins)
     flux_arr = [bin_edges[i] + (bin_edges[i + 1] - bin_edges[i]) / 2 for i in range(len(bin_edges) - 1)]
@@ -98,7 +96,6 @@ def get_lotss_hetdex_map(lotss_hetdex_data, nside=2048):
     return counts_map, mask, noise_map
 
 
-# TODO: process low resolution images?
 def get_lotss_hetdex_mask(nside):
     npix = hp.nside2npix(nside)  # 12 * nside ^ 2
     mask = np.zeros(npix, dtype=np.float)

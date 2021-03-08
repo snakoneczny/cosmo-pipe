@@ -1,5 +1,6 @@
 import os
 from collections import defaultdict
+from functools import partial
 
 import numpy as np
 import pymaster as nmt
@@ -11,21 +12,26 @@ from IPython.display import display, Math
 import json
 
 from env_config import PROJECT_PATH
-from utils import logger, get_shot_noise, get_overdensity_map, get_pairs, compute_master, get_correlation_matrix
+from utils import logger, get_shot_noise, get_overdensity_map, get_pairs, compute_master, get_correlation_matrix, \
+    get_redshift_distribution, ISWTracer
 from data_lotss import get_lotss_hetdex_data, get_lotss_hetdex_map, get_lotss_noise_weight_map, \
     get_lotss_redshift_distribution
-from data_cmb import get_cmb_lensing_map, get_cmb_lensing_noise
+from data_nvss import get_nvss_map, get_nvss_redshift_distribution
+from data_kids_qso import get_kids_qsos, get_kids_qso_map
+from data_cmb import get_cmb_lensing_map, get_cmb_lensing_noise, get_cmb_temperature_map
 
 
 class Experiment:
-    def __init__(self, config, set_maps=False, set_correlations=False, set_emcee_sampler=False):
+    def __init__(self, config, set_maps=False, set_correlations=False):
         # Input spectra and all required map symbols
         self.correlation_symbols = []
         self.map_symbols = []
 
         # Parameters
+        self.l_min = 0
         self.l_max = 0
         self.ells_per_bin = 0
+        self.ell_lengths = None
         self.lotss_flux_min_cut = 0.0  # mJy
         self.nside = 0
         self.z_tail = 0.0
@@ -36,6 +42,8 @@ class Experiment:
         self.max_iterations = 0
         self.starting_params = {}
         self.default_params = {}
+        self.lss_survey = None
+        self.cosmology_matter_power_spectrum = 'linear'
 
         # Data containters
         self.data = {}
@@ -90,20 +98,18 @@ class Experiment:
             experiment_name_parts.append(config['experiment_tag'])
         self.experiment_name = '__'.join(experiment_name_parts)
 
+        self.set_binning()
         if set_maps:
             self.set_maps()
         if set_correlations:
             self.set_correlations()
-        if set_emcee_sampler:
-            self.set_emcee_sampler()
 
     def run_emcee(self):
         if not self.are_maps_ready:
             self.set_maps()
         if not self.are_correlations_ready:
             self.set_correlations()
-        if not self.is_sampler_ready:
-            self.set_emcee_sampler()
+        self.set_emcee_sampler()
 
         config_file_path = os.path.join(self.mcmc_folder, '{}.config.json'.format(self.experiment_name))
         with open(config_file_path, 'w') as outfile:
@@ -163,7 +169,7 @@ class Experiment:
             params[param_name] = theta[self.arg_names.index(param_name)]
 
         cosmo = ccl.Cosmology(Omega_c=0.27, Omega_b=0.045, h=0.67, sigma8=params['sigma8'], n_s=0.96,
-                              matter_power_spectrum='linear')
+                              matter_power_spectrum=self.cosmology_matter_power_spectrum)
 
         z_arr, n_arr = get_lotss_redshift_distribution(z_tail=params['z_tail'])
         bias_arr = params['bias'] * np.ones(len(z_arr))
@@ -190,9 +196,11 @@ class Experiment:
 
     def get_log_prior(self, theta):
         prior = 0
-        if 'bias' in self.arg_names and theta[self.arg_names.index('bias')] < 0:
+        if 'bias' in self.arg_names and (
+                theta[self.arg_names.index('bias')] < 0 or theta[self.arg_names.index('bias')] > 6):
             prior = -np.inf
-        if 'sigma8' in self.arg_names and theta[self.arg_names.index('sigma8')] < 1e-5:
+        if 'sigma8' in self.arg_names and (
+                theta[self.arg_names.index('sigma8')] < 0.2 or theta[self.arg_names.index('sigma8')] > 2):
             prior = -np.inf
         return prior
 
@@ -214,7 +222,15 @@ class Experiment:
 
     def set_correlations(self):
         assert self.are_maps_ready
-        self.z_arr, self.n_arr = get_lotss_redshift_distribution(z_tail=self.z_tail)
+
+        get_redshift_distribution_functions = {
+            'LoTSS DR1': partial(get_lotss_redshift_distribution, z_tail=self.z_tail),
+            'NVSS': get_nvss_redshift_distribution,
+            # TODO: should include mask
+            'KiDS QSO': partial(get_redshift_distribution, self.data.get('g'), n_bins=50, z_col='Z_PHOTO_QSO')
+        }
+
+        self.z_arr, self.n_arr = get_redshift_distribution_functions[self.lss_survey]()
         self.set_theory_correlations()
         for correlation_symbol in self.theory_correlations.keys():
             self.theory_correlations[correlation_symbol] += self.noise_curves[correlation_symbol]
@@ -224,7 +240,6 @@ class Experiment:
         self.are_correlations_ready = True
 
     def set_inference_covariance(self):
-        self.n_ells = int(self.l_max / self.ells_per_bin)
         total_length = self.n_ells * len(self.correlation_symbols)
         self.inference_covariance = np.empty((total_length, total_length))
 
@@ -256,49 +271,27 @@ class Experiment:
             self.covariance_matrices[correlation_pair] = nmt.gaussian_covariance(
                 covariance_workspace,
                 0, 0, 0, 0,
-                [self.theory_correlations[a1 + b1]],
-                [self.theory_correlations[a1 + b2]],
-                [self.theory_correlations[a2 + b1]],
-                [self.theory_correlations[a2 + b2]],
+                [self.theory_correlations[''.join(sorted([a1, b1]))]],
+                [self.theory_correlations[''.join(sorted([a1, b2]))]],
+                [self.theory_correlations[''.join(sorted([a2, b1]))]],
+                [self.theory_correlations[''.join(sorted([a2, b2]))]],
                 wa=self.workspaces[a1 + a2],
                 wb=self.workspaces[b1 + b2],
             )
 
-            # TODO: ugly workaround
-            self.covariance_matrices[a1 + a2 + '-' + b2 + b1] = self.covariance_matrices[correlation_pair]
-            self.covariance_matrices[a2 + a1 + '-' + b1 + b2] = self.covariance_matrices[correlation_pair]
-            self.covariance_matrices[a2 + a1 + '-' + b2 + b1] = self.covariance_matrices[correlation_pair]
             self.covariance_matrices[b1 + b2 + '-' + a1 + a2] = np.transpose(self.covariance_matrices[correlation_pair])
 
     def set_data_correlations(self):
-        # if l_max:
-        #     ells = np.arange(l_max, dtype='int32')
-        #     weights = 1.0 / ells_per_bandpower * np.ones_like(ells)
-        #     bandpower_indices = -1 + np.zeros_like(ells)
-        #     i = 0
-        #     while ells_per_bandpower * (i + 1) + 2 < l_max:
-        #         bandpower_indices[ells_per_bandpower * i + 2:ells_per_bandpower * (i + 1) + 2] = i
-        #         i += 1
-        #     binning = nmt.NmtBin(nside=nside, bpws=bandpower_indices, ells=ells, weights=weights)
-        # else:
-        #     binning = nmt.NmtBin.from_nside_linear(nside, ells_per_bandpower)
-        self.binning = nmt.NmtBin.from_nside_linear(self.nside, self.ells_per_bin)
-
         # Get fields
         for map_symbol in self.map_symbols:
             self.fields[map_symbol] = nmt.NmtField(self.masks[map_symbol], [self.processed_maps[map_symbol]])
 
         # Get all correlations
-        for i, map_symbol_a in enumerate(self.map_symbols):
-            for map_symbol_b in self.map_symbols[i:]:
-                correlation_symbol = map_symbol_a + map_symbol_b
-                self.data_correlations[correlation_symbol], self.workspaces[correlation_symbol] = compute_master(
-                    self.fields[map_symbol_a], self.fields[map_symbol_b], self.binning)
-
-                # TODO: ugly workaround
-                correlation_symbol_reversed = map_symbol_b + map_symbol_a
-                self.data_correlations[correlation_symbol_reversed], self.workspaces[correlation_symbol_reversed] = \
-                    self.data_correlations[correlation_symbol], self.workspaces[correlation_symbol]
+        for correlation_symbol in self.all_correlation_symbols:
+            map_symbol_a = correlation_symbol[0]
+            map_symbol_b = correlation_symbol[1]
+            self.data_correlations[correlation_symbol], self.workspaces[correlation_symbol] = compute_master(
+                self.fields[map_symbol_a], self.fields[map_symbol_b], self.binning)
 
         # Decouple noise curves
         for correlation_symbol in self.noise_curves.keys():
@@ -308,7 +301,7 @@ class Experiment:
 
     def set_theory_correlations(self):
         cosmology = ccl.Cosmology(Omega_c=0.27, Omega_b=0.045, h=0.67, sigma8=0.83, n_s=0.96,
-                                  matter_power_spectrum='linear')
+                                  matter_power_spectrum=self.cosmology_matter_power_spectrum)
 
         bias_arr = self.bias * np.ones(len(self.z_arr))
         if self.scale_bias:
@@ -318,28 +311,41 @@ class Experiment:
             'g': ccl.NumberCountsTracer(cosmology, has_rsd=False, dndz=(self.z_arr, self.n_arr),
                                         bias=(self.z_arr, bias_arr)),
             'k': ccl.CMBLensingTracer(cosmology, 1091),
+            't': ISWTracer(cosmology, z_max=6., n_chi=1024),
         }
 
-        self.l_arr = np.arange(3 * self.nside)
-        for i, tracer_symbol_a in enumerate(self.map_symbols):
-            for tracer_symbol_b in self.map_symbols[i:]:
-                correlation_symbol = tracer_symbol_a + tracer_symbol_b
-                self.theory_correlations[correlation_symbol] = ccl.angular_cl(cosmology, tracers_dict[tracer_symbol_a],
-                                                                              tracers_dict[tracer_symbol_b], self.l_arr)
+        for correlation_symbol in self.all_correlation_symbols:
+            tracer_symbol_a = correlation_symbol[0]
+            tracer_symbol_b = correlation_symbol[1]
+            correlation_symbol = tracer_symbol_a + tracer_symbol_b
+            self.theory_correlations[correlation_symbol] = ccl.angular_cl(cosmology, tracers_dict[tracer_symbol_a],
+                                                                          tracers_dict[tracer_symbol_b], self.l_arr)
 
-                # TODO: ugly workaround
-                correlation_symbol_rev = tracer_symbol_b + tracer_symbol_a
-                self.theory_correlations[correlation_symbol_rev] = self.theory_correlations[correlation_symbol]
+    def set_binning(self):
+        # n_ells: number of bins, for inference covariance indexing
+        if self.ell_lengths:
+            ell_ini = [int(self.l_min + np.sum(self.ell_lengths[:i])) for i in range(len(self.ell_lengths))]
+            ell_end = [int(self.l_min + np.sum(self.ell_lengths[:i + 1])) for i in range(len(self.ell_lengths))]
+            self.binning = nmt.NmtBin.from_edges(ell_ini, ell_end)
+            self.n_ells = len(self.ell_lengths)
+        else:
+            self.binning = nmt.NmtBin.from_lmax_linear(self.l_max, self.ells_per_bin)
+            self.n_ells = int((self.l_max - 2) / self.ells_per_bin)
+
+        # Create dense array of ells, for theoretical power spectra
+        self.l_arr = np.arange(3 * self.nside)
 
     def set_maps(self):
+        set_map_functions = {
+            'LoTSS DR1': self.set_lotss_dr1_maps,
+            'NVSS': self.set_nvss_maps,
+            'KiDS QSO': self.set_kids_qso_maps,
+        }
+
         if 'g' in self.map_symbols:
-            self.data['g'] = get_lotss_hetdex_data()
-            self.original_maps['g'], self.masks['g'], self.noise_maps['g'] = get_lotss_hetdex_map(self.data['g'],
-                                                                                                  nside=self.nside)
-            self.noise_weight_maps['g'] = get_lotss_noise_weight_map(self.noise_maps['g'], self.masks['g'],
-                                                                     self.lotss_flux_min_cut, self.nside)
+            set_map_functions[self.lss_survey]()
             self.processed_maps['g'] = get_overdensity_map(self.original_maps['g'], self.masks['g'],
-                                                           self.noise_weight_maps['g'])
+                                                           self.noise_weight_maps.get('g'))
             self.noise_curves['gg'] = np.full(3 * self.nside, get_shot_noise(self.original_maps['g'], self.masks['g']))
 
         if 'k' in self.map_symbols:
@@ -347,15 +353,35 @@ class Experiment:
             self.processed_maps['k'] = self.original_maps['k']
             self.noise_curves['kk'] = get_cmb_lensing_noise(self.nside)
 
+        if 't' in self.map_symbols:
+            self.original_maps['t'], self.masks['t'] = get_cmb_temperature_map(nside=self.nside)
+            self.processed_maps['t'] = self.original_maps['t']
+            pass
+
         self.are_maps_ready = True
+
+    def set_lotss_dr1_maps(self):
+        self.data['g'] = get_lotss_hetdex_data()
+        self.original_maps['g'], self.masks['g'], self.noise_maps['g'] = get_lotss_hetdex_map(self.data['g'],
+                                                                                              nside=self.nside)
+        self.noise_weight_maps['g'] = get_lotss_noise_weight_map(self.noise_maps['g'], self.masks['g'],
+                                                                 self.lotss_flux_min_cut, self.nside)
+
+    def set_nvss_maps(self):
+        self.original_maps['g'], self.masks['g'] = get_nvss_map(nside=self.nside)
+
+    def set_kids_qso_maps(self):
+        self.data['g'] = get_kids_qsos()
+        self.original_maps['g'], self.masks['g'] = get_kids_qso_map(self.data['g'], self.nside)
 
 
 def show_mcmc_report(experiment_name, thin=10):
-    # TODO: read from json
-    labels = ['bias', 'sigma8']
-    n_walkers = 32
-
     mcmc_folder_path = os.path.join(PROJECT_PATH, 'outputs/MCMC')
+    with open(os.path.join(mcmc_folder_path, '{}.config.json'.format(experiment_name))) as file:
+        config = json.load(file)
+    labels = list(config['starting_params'].keys())
+    n_walkers = config['n_walkers']
+
     backend_reader = emcee.backends.HDFBackend(os.path.join(mcmc_folder_path, '{}.h5'.format(experiment_name)))
     tau_arr = np.load(os.path.join(mcmc_folder_path, '{}.tau.npy'.format(experiment_name)))
     emcee_sampler = emcee.EnsembleSampler(n_walkers, len(labels), None, backend=backend_reader)
@@ -387,7 +413,7 @@ def show_mcmc_report(experiment_name, thin=10):
         txt = txt.format(mcmc[1], q[0], q[1], labels[i])
         display(Math(txt))
 
-    #  r'$\sigma_8$' r'$b_g$' pretty print map
+    # TODO: r'$\sigma_8$' r'$b_g$' pretty print function with map
     sns.jointplot(samples[:, :, 1].flatten(), samples[:, :, 0].flatten(), kind='kde',
                   stat_func=None).set_axis_labels(
         labels[1], labels[0])

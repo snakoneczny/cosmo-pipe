@@ -25,10 +25,21 @@ cmb_columns_idx = struct(
 
 def get_cmb_temperature_map(nside=None):
     filename = 'COM_CMB_IQU-smica_2048_R3.00_full.fits'
+
+    # Read
     map = hp.read_map(os.path.join(DATA_PATH, 'Planck2018', filename), field=cmb_columns_idx.I_STOKES)
     mask = hp.read_map(os.path.join(DATA_PATH, 'Planck2018', filename), field=cmb_columns_idx.TMASK)
-    map = get_masked_map(map, mask)
+
+    # Rotate
+    rotator = Rotator(coord=['G', 'C'])
+    map = rotator.rotate_map_pixel(map)
+    mask = rotator.rotate_map_pixel(mask)
+
+    # Adjust
     map, mask = tansform_map_and_mask_to_nside(map, mask, nside=nside)
+    mask[mask < 0.1] = 0  # Visualization purpose
+
+    map = get_masked_map(map, mask)
     return map, mask
 
 
@@ -37,17 +48,20 @@ def get_cmb_lensing_map(nside=None):
     map_path = os.path.join(folder_path, 'dat_klm.fits')
     mask_path = os.path.join(folder_path, 'mask.fits')
 
+    # Read
     klm = hp.read_alm(map_path)
     map = hp.alm2map(klm, nside)
-
     mask = hp.read_map(mask_path)
-    mask = nmt.mask_apodization(mask, 0.2, apotype='C1')
-    mask = hp.ud_grade(mask, nside_out=nside)
-    mask[mask < 0.1] = 0  # Visualization purpose
 
+    # Rotate
     rotator = Rotator(coord=['G', 'C'])
     map = rotator.rotate_map_pixel(map)
     mask = rotator.rotate_map_pixel(mask)
+
+    # Adjust
+    mask = nmt.mask_apodization(mask, 0.2, apotype='C1')
+    mask = hp.ud_grade(mask, nside_out=nside)
+    mask[mask < 0.1] = 0  # Visualization purpose
 
     map = get_masked_map(map, mask)
     return map, mask
@@ -55,11 +69,6 @@ def get_cmb_lensing_map(nside=None):
 
 def get_cmb_lensing_noise(nside):
     l_arr = np.arange(3 * nside)
-    # cl_f = np.loadtxt(os.path.join(args.path_planck, 'nlkk.dat'), unpack=True)
-    # cl = np.zeros(len(l_arr))
-    # lmax = min(3*args.nside-1, int(cl_f[0, -1]))
-    # cl[int(cl_f[0, 0]):lmax+1] = cl_f[2][cl_f[0] <= lmax]
-    # cls_th['kk'] = cl
 
     path = os.path.join(DATA_PATH, 'Planck2018/COM_Lensing_2048_R2.00/nlkk.dat')
     data = np.loadtxt(path, unpack=False)
@@ -70,7 +79,6 @@ def get_cmb_lensing_noise(nside):
     noise_l_arr = np.arange(l_min, l_max + 1)
 
     noise = np.zeros(len(l_arr))
-    # kk_theory_2[kk_l_arr] = kk_theory[kk_l_arr]
     noise[noise_l_arr] += data['nl'].values[:l_max - l_min + 1]
 
     return noise
