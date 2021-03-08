@@ -1,0 +1,74 @@
+# Configurations given in 3 groups of parameters: data, power spectra and MCMC parameters
+
+LoTSS_DR2:
+  lss_survey: LoTSS_DR2
+  lotss_flux_min_cut: 2
+  nside: 512
+  z_tail: 2.0
+  bias: 2.1
+  scale_bias: True
+
+  correlation_symbols: [gg, gk, gt]
+  l_max: 510
+  ells_per_bin: 50
+
+  starting_params: {bias: [2.1, 0.5], sigma8: [0.83, 0.1]}
+  default_params: {bias: 2.1, sigma8: 0.83, z_tail: 2.0}
+  n_walkers: 32
+  max_iterations: 5000
+  continue_sampling: False
+
+
+LoTSS_DR1:
+  lss_survey: LoTSS_DR1
+  lotss_flux_min_cut: 2
+  nside: 512
+  z_tail: 2.0
+  bias: 2.1
+  scale_bias: True
+
+  correlation_symbols: [gg, gk]
+  l_max: 510
+  ells_per_bin: 50
+
+  starting_params: {bias: [2.1, 0.5], sigma8: [0.83, 0.1]}
+  default_params: {bias: 2.1, sigma8: 0.83, z_tail: 2.0}
+  n_walkers: 32
+  max_iterations: 5000
+  continue_sampling: False
+
+
+KiDS_QSO:
+  lss_survey: KiDS_QSO
+  nside: 512
+  bias: 1.6
+  scale_bias: True
+
+  correlation_symbols: [gg, gk, gt]
+  l_max: 500
+  ells_per_bin: 25
+
+  starting_params: {bias: [2.1, 0.5], sigma8: [0.83, 0.1]}
+  default_params: {bias: 2.1, sigma8: 0.83}
+  n_walkers: 32
+  max_iterations: 5000
+  continue_sampling: False
+
+
+NVSS:
+  lss_survey: NVSS
+  nside: 512
+  bias: 2.18
+  scale_bias: False
+
+  correlation_symbols: [gg, gk, gt]
+  l_min: 2
+  ell_lengths: [8, 10, 30, 50]
+  # l_max: 150
+  # ells_per_bin: 25
+
+  starting_params: {bias: (2.18, 0.5)}
+  default_params: {bias: 2.18}
+  n_walkers: 32
+  max_iterations: 5000
+  continue_sampling: False

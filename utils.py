@@ -33,8 +33,6 @@ class ISWTracer(ccl.Tracer):
     the large scales the ISW is sensitive to, these approximations must be
     borne in mind.
 
-    The resulted spectrum has to be divided by (ell + 1/2) ^ 2
-
     Args:
         cosmo (:class:`~pyccl.core.Cosmology`): Cosmology object.
         zmax (float): maximum redshift up to which we define the
@@ -127,11 +125,9 @@ def get_mean_map(l, b, v, nside):
         # Add objects weight and store a count
         mean_map[j] += v[i]
         n_obj_map[j] += 1
-
     mean_map /= n_obj_map
-    lon, lat = hp.pixelfunc.pix2ang(nside, range(npix), nest=False, lonlat=True)
 
-    return mean_map, lon, lat
+    return mean_map
 
 
 def get_redshift_distribution(data, n_bins=50, z_col='Z_PHOTO_QSO'):

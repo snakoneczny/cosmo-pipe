@@ -81,14 +81,15 @@ def flux_151_to_144(s_151):
 
 
 def get_lotss_hetdex_map(lotss_hetdex_data, nside=2048):
-    counts_map, _, _ = get_map(lotss_hetdex_data['RA'].values, lotss_hetdex_data['DEC'].values, nside=nside)
+    counts_map = get_map(lotss_hetdex_data['RA'].values, lotss_hetdex_data['DEC'].values, nside=nside)
     mask = get_lotss_hetdex_mask(nside)
     counts_map = get_masked_map(counts_map, mask)
 
     # Get noise in larger bins
-    noise_map, _, _ = get_mean_map(lotss_hetdex_data['RA'].values, lotss_hetdex_data['DEC'].values,
-                                   lotss_hetdex_data['Isl_rms'].values, nside=256)
+    noise_map = get_mean_map(lotss_hetdex_data['RA'].values, lotss_hetdex_data['DEC'].values,
+                             lotss_hetdex_data['Isl_rms'].values, nside=256)
     # Fill missing pixels with mean noise value  # TODO: print number of missing pixels and sky area of those
+    print(noise_map)
     mean_noise = noise_map[~np.isnan(noise_map)].mean()
     noise_map = np.nan_to_num(noise_map, nan=mean_noise)
     noise_map = get_masked_map(noise_map, hp.ud_grade(mask, nside_out=256))

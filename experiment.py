@@ -94,7 +94,7 @@ class Experiment:
 
         self.arg_names = list(self.starting_params.keys())
         experiment_name_parts = ['-'.join(self.correlation_symbols), '_'.join(self.arg_names)]
-        if config['experiment_tag'] is not None and len(config['experiment_tag']) > 0:
+        if 'experiment_tag' in config and config['experiment_tag'] is not None and len(config['experiment_tag']) > 0:
             experiment_name_parts.append(config['experiment_tag'])
         self.experiment_name = '__'.join(experiment_name_parts)
 
@@ -224,10 +224,10 @@ class Experiment:
         assert self.are_maps_ready
 
         get_redshift_distribution_functions = {
-            'LoTSS DR1': partial(get_lotss_redshift_distribution, z_tail=self.z_tail),
+            'LoTSS_DR1': partial(get_lotss_redshift_distribution, z_tail=self.z_tail),
             'NVSS': get_nvss_redshift_distribution,
             # TODO: should include mask
-            'KiDS QSO': partial(get_redshift_distribution, self.data.get('g'), n_bins=50, z_col='Z_PHOTO_QSO')
+            'KiDS_QSO': partial(get_redshift_distribution, self.data.get('g'), n_bins=50, z_col='Z_PHOTO_QSO')
         }
 
         self.z_arr, self.n_arr = get_redshift_distribution_functions[self.lss_survey]()
@@ -337,9 +337,9 @@ class Experiment:
 
     def set_maps(self):
         set_map_functions = {
-            'LoTSS DR1': self.set_lotss_dr1_maps,
+            'LoTSS_DR1': self.set_lotss_dr1_maps,
             'NVSS': self.set_nvss_maps,
-            'KiDS QSO': self.set_kids_qso_maps,
+            'KiDS_QSO': self.set_kids_qso_maps,
         }
 
         if 'g' in self.map_symbols:
