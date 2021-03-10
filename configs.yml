@@ -2,7 +2,7 @@
 
 LoTSS_DR2:
   lss_survey: LoTSS_DR2
-  lotss_flux_min_cut: 2
+  flux_min_cut: 2
   nside: 512
   z_tail: 2.0
   bias: 2.1
@@ -21,7 +21,7 @@ LoTSS_DR2:
 
 LoTSS_DR1:
   lss_survey: LoTSS_DR1
-  lotss_flux_min_cut: 2
+  flux_min_cut: 2
   nside: 512
   z_tail: 2.0
   bias: 2.1
@@ -64,8 +64,6 @@ NVSS:
   correlation_symbols: [gg, gk, gt]
   l_min: 2
   ell_lengths: [8, 10, 30, 50]
-  # l_max: 150
-  # ells_per_bin: 25
 
   starting_params: {bias: (2.18, 0.5)}
   default_params: {bias: 2.18}

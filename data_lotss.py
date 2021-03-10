@@ -80,21 +80,32 @@ def flux_151_to_144(s_151):
     return s_144
 
 
-def get_lotss_hetdex_map(lotss_hetdex_data, nside=2048):
-    counts_map = get_map(lotss_hetdex_data['RA'].values, lotss_hetdex_data['DEC'].values, nside=nside)
-    mask = get_lotss_hetdex_mask(nside)
-    counts_map = get_masked_map(counts_map, mask)
+def get_lotss_map(lotss_data, dr=1, nside=2048):
+    counts_map = get_map(lotss_data['RA'].values, lotss_data['DEC'].values, nside=nside)
+    if dr == 1:
+        mask = get_lotss_hetdex_mask(nside)
+    elif dr == 2:
+        mask = get_lotss_dr2_mask(nside)
+    else:
+        raise Exception('Wrong LoTSS data release number')
 
     # Get noise in larger bins
-    noise_map = get_mean_map(lotss_hetdex_data['RA'].values, lotss_hetdex_data['DEC'].values,
-                             lotss_hetdex_data['Isl_rms'].values, nside=256)
+    noise_map = get_mean_map(lotss_data['RA'].values, lotss_data['DEC'].values,
+                             lotss_data['Isl_rms'].values, nside=256)
     # Fill missing pixels with mean noise value  # TODO: print number of missing pixels and sky area of those
-    print(noise_map)
     mean_noise = noise_map[~np.isnan(noise_map)].mean()
     noise_map = np.nan_to_num(noise_map, nan=mean_noise)
     noise_map = get_masked_map(noise_map, hp.ud_grade(mask, nside_out=256))
 
+    counts_map = get_masked_map(counts_map, mask)
     return counts_map, mask, noise_map
+
+
+def get_lotss_dr2_mask(nside):
+    filename = 'Mask_default.fits'
+    mask = hp.read_map(os.path.join(DATA_PATH, 'LoTSS/DR2/masks', filename))
+    mask = hp.ud_grade(mask, nside)
+    return mask
 
 
 def get_lotss_hetdex_mask(nside):
@@ -113,22 +124,33 @@ def get_lotss_hetdex_mask(nside):
     return mask
 
 
-def get_lotss_hetdex_data():
-    data_path = os.path.join(DATA_PATH, 'LoTSS/DR1', 'LOFAR_HBA_T1_DR1_merge_ID_optical_f_v1.2.fits')
+def get_lotss_dr2_data(flux_min_cut):
+    data_path = os.path.join(DATA_PATH, 'LoTSS/DR2', 'LoTSS_DR2_v100.srl.fits')
     data = read_fits_to_pandas(data_path)
-    data = get_lotss_hetdex_subsample(data)
+    print('Original LoTSS DR2 datashape: {}'.format(data.shape))
+
+    # Flux cut
+    data = data.loc[data['Total_flux'] > flux_min_cut]
+    print('Total flux of S > {}mJy: {}'.format(flux_min_cut, data.shape))
+
     return data
 
 
-def get_lotss_hetdex_subsample(data):
+def get_lotss_hetdex_data(flux_min_cut):
+    data_path = os.path.join(DATA_PATH, 'LoTSS/DR1', 'LOFAR_HBA_T1_DR1_merge_ID_optical_f_v1.2.fits')
+    data = read_fits_to_pandas(data_path)
     print('Original LoTSS hetdex datashape: {}'.format(data.shape))
+
     # With redshift
     data = data.dropna(subset=['z_best'])
     print('Redshift available: {}'.format(data.shape))
+
     # S > 2 mJy
-    data = data.loc[data['Total_flux'] > 2]
-    print('Total flux of S > 2mJy: {}'.format(data.shape))
+    data = data.loc[data['Total_flux'] > flux_min_cut]
+    print('Total flux of S > {}mJy: {}'.format(flux_min_cut, data.shape))
+
     # discard S/N < 5
     data = data.loc[data['Total_flux'] / data['E_Total_flux'] > 5]
     print('S/N > 5: {}'.format(data.shape))
+
     return data

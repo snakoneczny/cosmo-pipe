@@ -14,7 +14,7 @@ import json
 from env_config import PROJECT_PATH
 from utils import logger, get_shot_noise, get_overdensity_map, get_pairs, compute_master, get_correlation_matrix, \
     get_redshift_distribution, ISWTracer
-from data_lotss import get_lotss_hetdex_data, get_lotss_hetdex_map, get_lotss_noise_weight_map, \
+from data_lotss import get_lotss_hetdex_data, get_lotss_dr2_data, get_lotss_map, get_lotss_noise_weight_map, \
     get_lotss_redshift_distribution
 from data_nvss import get_nvss_map, get_nvss_redshift_distribution
 from data_kids_qso import get_kids_qsos, get_kids_qso_map
@@ -32,7 +32,7 @@ class Experiment:
         self.l_max = 0
         self.ells_per_bin = 0
         self.ell_lengths = None
-        self.lotss_flux_min_cut = 0.0  # mJy
+        self.flux_min_cut = 0.0  # mJy
         self.nside = 0
         self.z_tail = 0.0
         self.bias = 0.0
@@ -224,6 +224,7 @@ class Experiment:
         assert self.are_maps_ready
 
         get_redshift_distribution_functions = {
+            'LoTSS_DR2': partial(get_lotss_redshift_distribution, z_tail=self.z_tail),
             'LoTSS_DR1': partial(get_lotss_redshift_distribution, z_tail=self.z_tail),
             'NVSS': get_nvss_redshift_distribution,
             # TODO: should include mask
@@ -337,6 +338,7 @@ class Experiment:
 
     def set_maps(self):
         set_map_functions = {
+            'LoTSS_DR2': self.set_lotss_dr2_maps,
             'LoTSS_DR1': self.set_lotss_dr1_maps,
             'NVSS': self.set_nvss_maps,
             'KiDS_QSO': self.set_kids_qso_maps,
@@ -360,12 +362,19 @@ class Experiment:
 
         self.are_maps_ready = True
 
+    def set_lotss_dr2_maps(self):
+        self.data['g'] = get_lotss_dr2_data(self.flux_min_cut)
+        self.original_maps['g'], self.masks['g'], self.noise_maps['g'] = get_lotss_map(
+            self.data['g'], dr=2, nside=self.nside)
+        # self.noise_weight_maps['g'] = get_lotss_noise_weight_map(self.noise_maps['g'], self.masks['g'],
+        #                                                          self.flux_min_cut, self.nside)
+
     def set_lotss_dr1_maps(self):
-        self.data['g'] = get_lotss_hetdex_data()
-        self.original_maps['g'], self.masks['g'], self.noise_maps['g'] = get_lotss_hetdex_map(self.data['g'],
-                                                                                              nside=self.nside)
+        self.data['g'] = get_lotss_hetdex_data(self.flux_min_cut)
+        self.original_maps['g'], self.masks['g'], self.noise_maps['g'] = get_lotss_map(
+            self.data['g'], dr=1, nside=self.nside)
         self.noise_weight_maps['g'] = get_lotss_noise_weight_map(self.noise_maps['g'], self.masks['g'],
-                                                                 self.lotss_flux_min_cut, self.nside)
+                                                                 self.flux_min_cut, self.nside)
 
     def set_nvss_maps(self):
         self.original_maps['g'], self.masks['g'] = get_nvss_map(nside=self.nside)

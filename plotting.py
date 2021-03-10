@@ -38,6 +38,13 @@ def plot_correlation(experiment, correlation_symbol, x_min=0, x_max=None, y_min=
     plt.show()
 
 
+def my_mollview(map, fwhm=0, unit=None, cmap='jet'):
+    if fwhm > 0:
+        map = hp.sphtfunc.smoothing(map, fwhm=math.radians(fwhm))
+    hp.mollview(map, cmap=cmap, unit=unit)
+    hp.graticule()
+
+
 def plot_lotss_hetdex(experiment):
     plot_hetdex_image(experiment.original_maps['g'], title='LOFAR counts map', fwhm=math.radians(0.6))
     plot_hetdex_image(experiment.noise_maps['g'], title='LOFAR noise map', fwhm=math.radians(0.6))
