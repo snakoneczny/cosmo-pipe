@@ -14,18 +14,19 @@ def plot_correlation(experiment, correlation_symbol, x_min=0, x_max=None, y_min=
                      y_scale='linear'):
     y_err = None
     covariance_symbol = '-'.join([correlation_symbol, correlation_symbol])
-    if experiment.covariance_matrices.get(covariance_symbol) is not None:
+    if covariance_symbol in experiment.covariance_matrices:
         y_err = np.sqrt(np.diag(experiment.covariance_matrices[covariance_symbol]))
 
-    ell_arr = experiment.binning.get_effective_ells()
-
     # Data
-    data_to_plot = experiment.data_correlations[correlation_symbol] - experiment.noise_decoupled[correlation_symbol]
-    plt.errorbar(ell_arr, data_to_plot, yerr=y_err, fmt='ob', label='data', markersize=2)
+    if correlation_symbol in experiment.data_correlations:
+        ell_arr = experiment.binnings[correlation_symbol].get_effective_ells()
+        data_to_plot = experiment.data_correlations[correlation_symbol] - experiment.noise_decoupled[correlation_symbol]
+        plt.errorbar(ell_arr, data_to_plot, yerr=y_err, fmt='ob', label='data', markersize=2)
 
     # Theory
-    data_to_plot = experiment.theory_correlations[correlation_symbol] - experiment.noise_curves[correlation_symbol]
-    plt.plot(experiment.l_arr, data_to_plot, 'r', label='theory', markersize=2)
+    if correlation_symbol in experiment.theory_correlations:
+        data_to_plot = experiment.theory_correlations[correlation_symbol] - experiment.noise_curves[correlation_symbol]
+        plt.plot(experiment.l_arr, data_to_plot, 'r', label='theory', markersize=2)
 
     plt.xscale(x_scale)
     plt.yscale(y_scale)
@@ -36,6 +37,11 @@ def plot_correlation(experiment, correlation_symbol, x_min=0, x_max=None, y_min=
     plt.legend(loc='upper right', ncol=2, labelspacing=0.1)
     plt.grid()
     plt.show()
+
+
+def plot_correlation_matrix(experiment):
+    plt.matshow(experiment.inference_correlation)
+    plt.colorbar()
 
 
 def my_mollview(map, fwhm=0, unit=None, cmap='jet'):

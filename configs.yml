@@ -5,12 +5,26 @@ LoTSS_DR2:
   flux_min_cut: 2
   nside: 512
   z_tail: 2.0
-  bias: 2.1
+  bias: 1.4
   scale_bias: True
 
-  correlation_symbols: [gg, gk, gt]
-  l_max: 510
-  ells_per_bin: 50
+  correlation_symbols: [gg, gt]
+#  l_max: {
+#    gg: 510,
+#    gk: 510,
+#  }
+#  ells_per_bin: {
+#    gg: 50,
+#    gk: 50,
+#  }
+  l_min: {
+    gg: 2,
+    gt: 2,
+  }
+  ell_lengths: {
+    gg: [8, 10, 30, 50],
+    gt: [8, 10, 30, 50],
+  }
 
   starting_params: {bias: [2.1, 0.5], sigma8: [0.83, 0.1]}
   default_params: {bias: 2.1, sigma8: 0.83, z_tail: 2.0}
@@ -28,8 +42,14 @@ LoTSS_DR1:
   scale_bias: True
 
   correlation_symbols: [gg, gk]
-  l_max: 510
-  ells_per_bin: 50
+  l_max: {
+    gg: 510,
+    gk: 510,
+  }
+  ells_per_bin: {
+    gg: 50,
+    gk: 50,
+  }
 
   starting_params: {bias: [2.1, 0.5], sigma8: [0.83, 0.1]}
   default_params: {bias: 2.1, sigma8: 0.83, z_tail: 2.0}
@@ -45,8 +65,20 @@ KiDS_QSO:
   scale_bias: True
 
   correlation_symbols: [gg, gk, gt]
-  l_max: 500
-  ells_per_bin: 25
+  l_max: {
+    gg: 510,
+    gk: 510,
+  }
+  ells_per_bin: {
+    gg: 50,
+    gk: 50
+  }
+  l_min: {
+    gt: 2,
+  }
+  ell_lengths: {
+    gt: [8, 10, 30, 50]
+  }
 
   starting_params: {bias: [2.1, 0.5], sigma8: [0.83, 0.1]}
   default_params: {bias: 2.1, sigma8: 0.83}
@@ -62,8 +94,20 @@ NVSS:
   scale_bias: False
 
   correlation_symbols: [gg, gk, gt]
-  l_min: 2
-  ell_lengths: [8, 10, 30, 50]
+  l_max: {
+    gg: 510,
+    gk: 510,
+  }
+  ells_per_bin: {
+    gg: 50,
+    gk: 50
+  }
+  l_min: {
+    gt: 2,
+  }
+  ell_lengths: {
+    gt: [8, 10, 30, 50]
+  }
 
   starting_params: {bias: (2.18, 0.5)}
   default_params: {bias: 2.18}

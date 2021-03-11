@@ -28,10 +28,10 @@ class Experiment:
         self.map_symbols = []
 
         # Parameters
-        self.l_min = 0
-        self.l_max = 0
-        self.ells_per_bin = 0
-        self.ell_lengths = None
+        self.l_min = {}
+        self.l_max = {}
+        self.ells_per_bin = {}
+        self.ell_lengths = {}
         self.flux_min_cut = 0.0  # mJy
         self.nside = 0
         self.z_tail = 0.0
@@ -62,11 +62,11 @@ class Experiment:
         self.data_correlations = {}
         self.fields = {}
         self.workspaces = {}
-        self.binning = None
+        self.binnings = {}
         self.covariance_matrices = {}
         self.correlation_matrices = {}
         self.l_arr = None
-        self.n_ells = None
+        self.n_ells = {}
 
         # MCMC containers
         self.inference_covariance = None
@@ -214,6 +214,7 @@ class Experiment:
     def set_data_vector(self):
         data_vectors = []
         for correlation_symbol in self.correlation_symbols:
+            # TODO: should be noise decoupled - works only if noise applied only to gg
             # Subtract noise from data because theory spectra are created without noise during the sampling
             noise = self.noise_curves[correlation_symbol]
             noise = noise[:self.n_ells] if isinstance(noise, np.ndarray) else noise
@@ -241,23 +242,33 @@ class Experiment:
         self.are_correlations_ready = True
 
     def set_inference_covariance(self):
-        total_length = self.n_ells * len(self.correlation_symbols)
+        total_length = sum(self.n_ells.values())
         self.inference_covariance = np.empty((total_length, total_length))
 
+        a_start = 0
         for i, corr_symbol_a in enumerate(self.correlation_symbols):
+
+            b_start = 0
             for j, corr_symbol_b in enumerate(self.correlation_symbols):
-                a_start = i * self.n_ells
-                a_end = (i + 1) * self.n_ells
-                b_start = j * self.n_ells
-                b_end = (j + 1) * self.n_ells
+                a_end = a_start + self.n_ells[corr_symbol_a]
+                b_end = b_start + self.n_ells[corr_symbol_b]
                 # TODO: make sure the order is right
+
+                # print(corr_symbol_a, corr_symbol_b)
+                # print(a_start, a_end, b_start, b_end)
+                # print(self.covariance_matrices[corr_symbol_a + '-' + corr_symbol_b].shape)
+                # print('--------------')
+
                 self.inference_covariance[a_start: a_end, b_start: b_end] = \
-                    self.covariance_matrices[corr_symbol_b + '-' + corr_symbol_a][:self.n_ells, :self.n_ells]
+                    self.covariance_matrices[corr_symbol_a + '-' + corr_symbol_b]  # [:self.n_ells[corr_symbol_a], :self.n_ells[corr_symbol_b]]
+
+                b_start += self.n_ells[corr_symbol_b]
+            a_start += self.n_ells[corr_symbol_a]
 
         self.inference_correlation = get_correlation_matrix(self.inference_covariance)
 
     def set_covariance_matrices(self):
-        correlation_pairs = get_pairs(self.all_correlation_symbols, join_with='-')
+        correlation_pairs = get_pairs(self.correlation_symbols, join_with='-')
         for correlation_pair in correlation_pairs:
             a1 = correlation_pair[0]
             a2 = correlation_pair[1]
@@ -280,7 +291,14 @@ class Experiment:
                 wb=self.workspaces[b1 + b2],
             )
 
-            self.covariance_matrices[b1 + b2 + '-' + a1 + a2] = np.transpose(self.covariance_matrices[correlation_pair])
+            transpose_corr_symbol = b1 + b2 + '-' + a1 + a2
+            self.covariance_matrices[transpose_corr_symbol] = np.transpose(self.covariance_matrices[correlation_pair])
+
+            # self.covariance_matrices[correlation_pair] = self.covariance_matrices[correlation_pair][:self.n_ells[a1+a2], :self.n_ells[b1+b2]]
+            # self.covariance_matrices[transpose_corr_symbol] = self.covariance_matrices[transpose_corr_symbol][:self.n_ells[b1+b2], :self.n_ells[a1+a2]]
+
+            if a1 + a2 == b1 + b2:
+                self.correlation_matrices[correlation_pair] = get_correlation_matrix(self.covariance_matrices[correlation_pair])
 
     def set_data_correlations(self):
         # Get fields
@@ -288,15 +306,16 @@ class Experiment:
             self.fields[map_symbol] = nmt.NmtField(self.masks[map_symbol], [self.processed_maps[map_symbol]])
 
         # Get all correlations
-        for correlation_symbol in self.all_correlation_symbols:
+        for correlation_symbol in self.correlation_symbols:
             map_symbol_a = correlation_symbol[0]
             map_symbol_b = correlation_symbol[1]
             self.data_correlations[correlation_symbol], self.workspaces[correlation_symbol] = compute_master(
-                self.fields[map_symbol_a], self.fields[map_symbol_b], self.binning)
+                self.fields[map_symbol_a], self.fields[map_symbol_b], self.binnings[correlation_symbol])
 
+        # TODO: decide about that, only used in plotting?
         # Decouple noise curves
         for correlation_symbol in self.noise_curves.keys():
-            if isinstance(self.noise_curves[correlation_symbol], np.ndarray):
+            if isinstance(self.noise_curves[correlation_symbol], np.ndarray) and correlation_symbol in self.workspaces:
                 self.noise_decoupled[correlation_symbol] = self.workspaces[correlation_symbol].decouple_cell(
                     self.workspaces[correlation_symbol].couple_cell([self.noise_curves[correlation_symbol]]))[0]
 
@@ -324,14 +343,23 @@ class Experiment:
 
     def set_binning(self):
         # n_ells: number of bins, for inference covariance indexing
-        if self.ell_lengths:
-            ell_ini = [int(self.l_min + np.sum(self.ell_lengths[:i])) for i in range(len(self.ell_lengths))]
-            ell_end = [int(self.l_min + np.sum(self.ell_lengths[:i + 1])) for i in range(len(self.ell_lengths))]
-            self.binning = nmt.NmtBin.from_edges(ell_ini, ell_end)
-            self.n_ells = len(self.ell_lengths)
-        else:
-            self.binning = nmt.NmtBin.from_lmax_linear(self.l_max, self.ells_per_bin)
-            self.n_ells = int((self.l_max - 2) / self.ells_per_bin)
+        for correlation_symbol in self.correlation_symbols:
+            if correlation_symbol in self.ell_lengths:
+                l_min = self.l_min[correlation_symbol]
+                ell_lengths = self.ell_lengths[correlation_symbol]
+                n_ells = len(ell_lengths)
+                ell_ini = [int(l_min + np.sum(ell_lengths[:i])) for i in range(n_ells)]
+                ell_end = [int(l_min + np.sum(ell_lengths[:i + 1])) for i in range(n_ells)]
+
+                self.binnings[correlation_symbol] = nmt.NmtBin.from_edges(ell_ini, ell_end)
+                self.n_ells[correlation_symbol] = n_ells
+
+            else:
+                l_max = self.l_max[correlation_symbol]
+                ells_per_bin = self.ells_per_bin[correlation_symbol]
+
+                self.binnings[correlation_symbol] = nmt.NmtBin.from_lmax_linear(l_max, ells_per_bin)
+                self.n_ells[correlation_symbol] = int((l_max - 2) / ells_per_bin)
 
         # Create dense array of ells, for theoretical power spectra
         self.l_arr = np.arange(3 * self.nside)
