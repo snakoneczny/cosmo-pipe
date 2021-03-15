@@ -10,6 +10,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from IPython.display import display, Math
 import json
+import yaml
 
 from env_config import PROJECT_PATH
 from utils import logger, get_shot_noise, get_overdensity_map, get_pairs, compute_master, get_correlation_matrix, \
@@ -27,23 +28,28 @@ class Experiment:
         self.correlation_symbols = []
         self.map_symbols = []
 
-        # Parameters
-        self.l_min = {}
-        self.l_max = {}
-        self.ells_per_bin = {}
-        self.ell_lengths = {}
+        # Data parameters
+        self.lss_survey = None
         self.flux_min_cut = 0.0  # mJy
         self.nside = 0
         self.z_tail = 0.0
         self.bias = 0.0
         self.scale_bias = None
+
+        # Correlation parameters
+        self.l_min = {}
+        self.l_max = {}
+        self.ells_per_bin = {}
+        self.ell_lengths = {}
+        self.cosmology_name = None
+        self.cosmology_matter_power_spectrum = None
+        self.cosmology_params = None
+
+        # MCMC parameters
         self.continue_sampling = False
         self.n_walkers = 0
         self.max_iterations = 0
         self.starting_params = {}
-        self.default_params = {}
-        self.lss_survey = None
-        self.cosmology_matter_power_spectrum = 'linear'
 
         # Data containters
         self.data = {}
@@ -89,16 +95,18 @@ class Experiment:
         for key, value in config.items():
             setattr(self, key, value)
 
+        # Generate necessary correlation symbols
         self.map_symbols = list(set(''.join(self.correlation_symbols)))
         self.all_correlation_symbols = get_pairs(self.map_symbols)
 
+        # Create experiment name
         self.arg_names = list(self.starting_params.keys())
         experiment_name_parts = ['-'.join(self.correlation_symbols), '_'.join(self.arg_names)]
         if 'experiment_tag' in config and config['experiment_tag'] is not None and len(config['experiment_tag']) > 0:
             experiment_name_parts.append(config['experiment_tag'])
         self.experiment_name = '__'.join(experiment_name_parts)
 
-        self.set_binning()
+        # Set maps and correlations
         if set_maps:
             self.set_maps()
         if set_correlations:
@@ -231,8 +239,9 @@ class Experiment:
             # TODO: should include mask
             'KiDS_QSO': partial(get_redshift_distribution, self.data.get('g'), n_bins=50, z_col='Z_PHOTO_QSO')
         }
-
         self.z_arr, self.n_arr = get_redshift_distribution_functions[self.lss_survey]()
+
+        self.set_binning()
         self.set_theory_correlations()
         for correlation_symbol in self.theory_correlations.keys():
             self.theory_correlations[correlation_symbol] += self.noise_curves[correlation_symbol]
@@ -260,7 +269,7 @@ class Experiment:
                 # print('--------------')
 
                 self.inference_covariance[a_start: a_end, b_start: b_end] = \
-                    self.covariance_matrices[corr_symbol_a + '-' + corr_symbol_b]  # [:self.n_ells[corr_symbol_a], :self.n_ells[corr_symbol_b]]
+                    self.covariance_matrices[corr_symbol_b + '-' + corr_symbol_a]  # [:self.n_ells[corr_symbol_a], :self.n_ells[corr_symbol_b]]
 
                 b_start += self.n_ells[corr_symbol_b]
             a_start += self.n_ells[corr_symbol_a]
@@ -320,8 +329,12 @@ class Experiment:
                     self.workspaces[correlation_symbol].couple_cell([self.noise_curves[correlation_symbol]]))[0]
 
     def set_theory_correlations(self):
-        cosmology = ccl.Cosmology(Omega_c=0.27, Omega_b=0.045, h=0.67, sigma8=0.83, n_s=0.96,
-                                  matter_power_spectrum=self.cosmology_matter_power_spectrum)
+        # Get cosmology parameters
+        with open(os.path.join(PROJECT_PATH, 'cosmologies.yml'), 'r') as cosmology_file:
+            self.cosmology_params = yaml.full_load(cosmology_file)[self.cosmology_name]
+        self.cosmology_params['matter_power_spectrum'] = self.cosmology_matter_power_spectrum
+
+        cosmology = ccl.Cosmology(**self.cosmology_params)
 
         bias_arr = self.bias * np.ones(len(self.z_arr))
         if self.scale_bias:

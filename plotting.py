@@ -51,14 +51,6 @@ def my_mollview(map, fwhm=0, unit=None, cmap='jet'):
     hp.graticule()
 
 
-def plot_lotss_hetdex(experiment):
-    plot_hetdex_image(experiment.original_maps['g'], title='LOFAR counts map', fwhm=math.radians(0.6))
-    plot_hetdex_image(experiment.noise_maps['g'], title='LOFAR noise map', fwhm=math.radians(0.6))
-    plot_hetdex_image(experiment.noise_weight_maps['g'], title='LOFAR noise weight map', fwhm=math.radians(0.6))
-    plot_hetdex_image(experiment.processed_maps['g'], title='LOFAR overdensity map', fwhm=math.radians(0.6))
-    plot_hetdex_image(experiment.masks['g'], title='LOFAR mask')
-
-
 def plot_cmb_lensing_hetdex(experiment):
     plot_hetdex_image(experiment.original_maps['k'], experiment.masks['g'], title='k', fwhm=math.radians(0.6))
     plot_hetdex_image(experiment.masks['k'], title='CMB mask')

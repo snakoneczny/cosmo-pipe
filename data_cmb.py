@@ -68,16 +68,16 @@ def get_cmb_lensing_map(nside=None):
 
 
 def get_cmb_lensing_noise(nside):
-    l_arr = np.arange(3 * nside)
+    assert nside <= 2048
 
     path = os.path.join(DATA_PATH, 'Planck2018/COM_Lensing_2048_R2.00/nlkk.dat')
     data = np.loadtxt(path, unpack=False)
     data = pd.DataFrame(data, columns=['l', 'nl', 'cl+nl'])
 
+    l_arr = np.arange(3 * nside)
     l_min = int(data['l'][0])
-    l_max = min(l_arr[-1], data['l'].values[-1])
+    l_max = int(min(l_arr[-1], data['l'].values[-1]))
     noise_l_arr = np.arange(l_min, l_max + 1)
-
     noise = np.zeros(len(l_arr))
     noise[noise_l_arr] += data['nl'].values[:l_max - l_min + 1]
 

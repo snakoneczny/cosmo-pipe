@@ -141,16 +141,8 @@ def get_lotss_hetdex_data(flux_min_cut):
     data = read_fits_to_pandas(data_path)
     print('Original LoTSS hetdex datashape: {}'.format(data.shape))
 
-    # With redshift
-    data = data.dropna(subset=['z_best'])
-    print('Redshift available: {}'.format(data.shape))
-
-    # S > 2 mJy
+    # Flux cut
     data = data.loc[data['Total_flux'] > flux_min_cut]
     print('Total flux of S > {}mJy: {}'.format(flux_min_cut, data.shape))
-
-    # discard S/N < 5
-    data = data.loc[data['Total_flux'] / data['E_Total_flux'] > 5]
-    print('S/N > 5: {}'.format(data.shape))
 
     return data
