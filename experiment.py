@@ -171,16 +171,21 @@ class Experiment:
         if not np.isfinite(log_prior):
             return -np.inf
 
-        # Update default parameters with given parameters
-        params = self.default_params.copy()
+        # TODO: works only if parameterts first defined in cosmology params
+        # Update default cosmological parameters with given parameters
+        params = self.cosmology_params.copy()
         for param_name in self.arg_names:
-            params[param_name] = theta[self.arg_names.index(param_name)]
+            if param_name in params:
+                params[param_name] = theta[self.arg_names.index(param_name)]
 
-        cosmo = ccl.Cosmology(Omega_c=0.27, Omega_b=0.045, h=0.67, sigma8=params['sigma8'], n_s=0.96,
-                              matter_power_spectrum=self.cosmology_matter_power_spectrum)
+        cosmo = ccl.Cosmology(**params)
 
-        z_arr, n_arr = get_lotss_redshift_distribution(z_tail=params['z_tail'])
-        bias_arr = params['bias'] * np.ones(len(z_arr))
+        # TODO: refactor
+        z_tail = theta[self.arg_names.index('z_tail')] if 'z_tail' in self.arg_names else self.z_tail
+        bias = theta[self.arg_names.index('bias')] if 'bias' in self.arg_names else self.bias
+
+        z_arr, n_arr = get_lotss_redshift_distribution(z_tail=z_tail)
+        bias_arr = bias * np.ones(len(z_arr))
         bias_arr = bias_arr / ccl.growth_factor(cosmo, 1. / (1 + z_arr))
 
         number_counts_tracer = ccl.NumberCountsTracer(cosmo, has_rsd=False, dndz=(z_arr, n_arr), bias=(z_arr, bias_arr))
@@ -197,7 +202,8 @@ class Experiment:
                 self.workspaces[correlation_symbol].couple_cell([correlations[correlation_symbol]]))[0]
 
         model = np.concatenate(
-            [correlations[correlation_symbol][:self.n_ells] for correlation_symbol in self.correlation_symbols])
+            [correlations[correlation_symbol][:self.n_ells[correlation_symbol]] for correlation_symbol in
+             self.correlation_symbols])
 
         diff = self.data_vector - model
         return log_prior - np.dot(diff, np.dot(self.inverted_covariance, diff)) / 2.0
@@ -225,8 +231,8 @@ class Experiment:
             # TODO: should be noise decoupled - works only if noise applied only to gg
             # Subtract noise from data because theory spectra are created without noise during the sampling
             noise = self.noise_curves[correlation_symbol]
-            noise = noise[:self.n_ells] if isinstance(noise, np.ndarray) else noise
-            data_vectors.append(self.data_correlations[correlation_symbol][:self.n_ells] - noise)
+            noise = noise[:self.n_ells[correlation_symbol]] if isinstance(noise, np.ndarray) else noise
+            data_vectors.append(self.data_correlations[correlation_symbol][:self.n_ells[correlation_symbol]] - noise)
         self.data_vector = np.concatenate(data_vectors)
 
     def set_correlations(self):
@@ -269,7 +275,8 @@ class Experiment:
                 # print('--------------')
 
                 self.inference_covariance[a_start: a_end, b_start: b_end] = \
-                    self.covariance_matrices[corr_symbol_b + '-' + corr_symbol_a]  # [:self.n_ells[corr_symbol_a], :self.n_ells[corr_symbol_b]]
+                    self.covariance_matrices[
+                        corr_symbol_a + '-' + corr_symbol_b]  # [:self.n_ells[corr_symbol_a], :self.n_ells[corr_symbol_b]]
 
                 b_start += self.n_ells[corr_symbol_b]
             a_start += self.n_ells[corr_symbol_a]
@@ -307,7 +314,8 @@ class Experiment:
             # self.covariance_matrices[transpose_corr_symbol] = self.covariance_matrices[transpose_corr_symbol][:self.n_ells[b1+b2], :self.n_ells[a1+a2]]
 
             if a1 + a2 == b1 + b2:
-                self.correlation_matrices[correlation_pair] = get_correlation_matrix(self.covariance_matrices[correlation_pair])
+                self.correlation_matrices[correlation_pair] = get_correlation_matrix(
+                    self.covariance_matrices[correlation_pair])
 
     def set_data_correlations(self):
         # Get fields
