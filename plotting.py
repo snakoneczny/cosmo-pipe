@@ -51,11 +51,6 @@ def my_mollview(map, fwhm=0, unit=None, cmap='jet'):
     hp.graticule()
 
 
-def plot_cmb_lensing_hetdex(experiment):
-    plot_hetdex_image(experiment.original_maps['k'], experiment.masks['g'], title='k', fwhm=math.radians(0.6))
-    plot_hetdex_image(experiment.masks['k'], title='CMB mask')
-
-
 def plot_hetdex_image(map, additional_mask=None, title=None, cmap='viridis', fwhm=0.0, norm=None):
     if fwhm > 0:
         map = hp.sphtfunc.smoothing(map, fwhm=fwhm)

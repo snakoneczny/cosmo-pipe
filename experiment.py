@@ -1,6 +1,7 @@
 import os
 from collections import defaultdict
 from functools import partial
+import math
 
 import numpy as np
 import pymaster as nmt
@@ -14,7 +15,7 @@ import yaml
 
 from env_config import PROJECT_PATH
 from utils import logger, get_shot_noise, get_overdensity_map, get_pairs, compute_master, get_correlation_matrix, \
-    get_redshift_distribution, ISWTracer
+    get_redshift_distribution, ISWTracer, get_chi_squared
 from data_lotss import get_lotss_hetdex_data, get_lotss_dr2_data, get_lotss_map, get_lotss_noise_weight_map, \
     get_lotss_redshift_distribution
 from data_nvss import get_nvss_map, get_nvss_redshift_distribution
@@ -66,6 +67,8 @@ class Experiment:
         self.n_arr = []
         self.theory_correlations = {}
         self.data_correlations = {}
+        self.chi_squared = {}
+        self.sigmas = {}
         self.fields = {}
         self.workspaces = {}
         self.binnings = {}
@@ -147,8 +150,6 @@ class Experiment:
     def set_emcee_sampler(self):
         assert self.are_correlations_ready
 
-        self.set_data_vector()
-        self.inverted_covariance = np.linalg.inv(self.inference_covariance)
         self.set_walkers_starting_params()
 
         self.backend_filename = os.path.join(self.mcmc_folder, '{}.h5'.format(self.experiment_name))
@@ -198,8 +199,10 @@ class Experiment:
             correlations['gk'] = ccl.angular_cl(cosmo, number_counts_tracer, cmb_lensing_tracer, self.l_arr)
 
         for correlation_symbol in self.correlation_symbols:
-            correlations[correlation_symbol] = self.workspaces[correlation_symbol].decouple_cell(
-                self.workspaces[correlation_symbol].couple_cell([correlations[correlation_symbol]]))[0]
+            # TODO: extract function
+            workspace = self.workspaces[correlation_symbol]
+            correlations[correlation_symbol] = workspace.decouple_cell(workspace.couple_cell(
+                [correlations[correlation_symbol]]))[0]
 
         model = np.concatenate(
             [correlations[correlation_symbol][:self.n_ells[correlation_symbol]] for correlation_symbol in
@@ -225,16 +228,6 @@ class Experiment:
         self.p0_walkers = np.array(
             [p0 + p0_scales * np.random.uniform(low=-1, high=1, size=n_dim) for i in range(self.n_walkers)])
 
-    def set_data_vector(self):
-        data_vectors = []
-        for correlation_symbol in self.correlation_symbols:
-            # TODO: should be noise decoupled - works only if noise applied only to gg
-            # Subtract noise from data because theory spectra are created without noise during the sampling
-            noise = self.noise_curves[correlation_symbol]
-            noise = noise[:self.n_ells[correlation_symbol]] if isinstance(noise, np.ndarray) else noise
-            data_vectors.append(self.data_correlations[correlation_symbol][:self.n_ells[correlation_symbol]] - noise)
-        self.data_vector = np.concatenate(data_vectors)
-
     def set_correlations(self):
         assert self.are_maps_ready
 
@@ -251,10 +244,32 @@ class Experiment:
         self.set_theory_correlations()
         for correlation_symbol in self.theory_correlations.keys():
             self.theory_correlations[correlation_symbol] += self.noise_curves[correlation_symbol]
+
         self.set_data_correlations()
+        self.set_data_vector()
+
         self.set_covariance_matrices()
         self.set_inference_covariance()
+        self.inverted_covariance = np.linalg.inv(self.inference_covariance)
+
+        self.set_sigmas()
+
         self.are_correlations_ready = True
+
+    def set_sigmas(self):
+        for correlation_symbol in self.data_correlations:
+            data = self.data_correlations[correlation_symbol]
+            model = self.theory_correlations[correlation_symbol]
+            cov_matrix = self.covariance_matrices[correlation_symbol + '-' + correlation_symbol]
+
+            # TODO: extract function
+            workspace = self.workspaces[correlation_symbol]
+            model = workspace.decouple_cell(workspace.couple_cell([model]))[0]
+
+            self.chi_squared[correlation_symbol] = get_chi_squared(data, model, cov_matrix)
+
+            zero_chi_squared = get_chi_squared(data, 0, cov_matrix)
+            self.sigmas[correlation_symbol] = math.sqrt(zero_chi_squared - self.chi_squared[correlation_symbol])
 
     def set_inference_covariance(self):
         total_length = sum(self.n_ells.values())
@@ -274,6 +289,7 @@ class Experiment:
                 # print(self.covariance_matrices[corr_symbol_a + '-' + corr_symbol_b].shape)
                 # print('--------------')
 
+                # TODO: last indexing
                 self.inference_covariance[a_start: a_end, b_start: b_end] = \
                     self.covariance_matrices[
                         corr_symbol_a + '-' + corr_symbol_b]  # [:self.n_ells[corr_symbol_a], :self.n_ells[corr_symbol_b]]
@@ -316,6 +332,16 @@ class Experiment:
             if a1 + a2 == b1 + b2:
                 self.correlation_matrices[correlation_pair] = get_correlation_matrix(
                     self.covariance_matrices[correlation_pair])
+
+    def set_data_vector(self):
+        data_vectors = []
+        for correlation_symbol in self.correlation_symbols:
+            # TODO: should be noise decoupled - works only if noise applied only to gg
+            # Subtract noise from data because theory spectra are created without noise during the sampling
+            noise = self.noise_curves[correlation_symbol]
+            noise = noise[:self.n_ells[correlation_symbol]] if isinstance(noise, np.ndarray) else noise
+            data_vectors.append(self.data_correlations[correlation_symbol][:self.n_ells[correlation_symbol]] - noise)
+        self.data_vector = np.concatenate(data_vectors)
 
     def set_data_correlations(self):
         # Get fields

@@ -55,8 +55,8 @@ class ISWTracer(ccl.Tracer):
         self.add_tracer(cosmo, kernel=(chi, w_arr), der_bessel=-1)
 
 
-def get_chi_squared(data_vector, model_vector, covariance):
-    inverted_covariance = np.linalg.inv(covariance)
+def get_chi_squared(data_vector, model_vector, covariance_matrix):
+    inverted_covariance = np.linalg.inv(covariance_matrix)
     diff = data_vector - model_vector
     return diff.dot(inverted_covariance).dot(diff)
 

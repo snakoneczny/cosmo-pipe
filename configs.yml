@@ -10,23 +10,23 @@ LoTSS_DR2:
 
   cosmology_name: planck
   cosmology_matter_power_spectrum: halofit
-  correlation_symbols: [gg, gt]
-#  l_max: {
-#    gg: 510,
-#    gk: 510,
-#  }
-#  ells_per_bin: {
-#    gg: 50,
-#    gk: 50,
-#  }
-  l_min: {
-    gg: 2,
-    gt: 2,
+  correlation_symbols: [gg, gk]
+  l_max: {
+    gg: 510,
+    gk: 510,
   }
-  ell_lengths: {
-    gg: [8, 10, 30, 50],
-    gt: [8, 10, 30, 50],
+  ells_per_bin: {
+    gg: 50,
+    gk: 50,
   }
+#  l_min: {
+#    gg: 2,
+#    gt: 2,
+#  }
+#  ell_lengths: {
+#    gg: [8, 10, 30, 50],
+#    gt: [8, 10, 30, 50],
+#  }
 
   starting_params: {bias: [2.1, 0.5], sigma8: [0.83, 0.1]}
   n_walkers: 32
@@ -59,6 +59,7 @@ LoTSS_DR1:
   max_iterations: 5000
   continue_sampling: False
 
+
 KiDS_QSO:
   lss_survey: KiDS_QSO
   nside: 512
@@ -67,7 +68,7 @@ KiDS_QSO:
 
   cosmology_name: planck
   cosmology_matter_power_spectrum: halofit
-  correlation_symbols: [gg, gk, gt]
+  correlation_symbols: [gg, gk]
   l_max: {
     gg: 510,
     gk: 510,
@@ -75,12 +76,6 @@ KiDS_QSO:
   ells_per_bin: {
     gg: 50,
     gk: 50
-  }
-  l_min: {
-    gt: 2,
-  }
-  ell_lengths: {
-    gt: [8, 10, 30, 50]
   }
 
   starting_params: {bias: [2.1, 0.5], sigma8: [0.83, 0.1]}
@@ -97,20 +92,14 @@ NVSS:
 
   cosmology_name: planck
   cosmology_matter_power_spectrum: halofit
-  correlation_symbols: [gg, gk, gt]
-  l_max: {
-    gg: 510,
-    gk: 510,
-  }
-  ells_per_bin: {
-    gg: 50,
-    gk: 50
-  }
+  correlation_symbols: [gg, gt]
   l_min: {
-    gt: 2,
+    gg: 10,
+    gt: 4,
   }
   ell_lengths: {
-    gt: [8, 10, 30, 50]
+    gg: [8, 14, 26],
+    gt: [6, 12, 24, 52],
   }
 
   starting_params: {bias: (2.18, 0.5)}

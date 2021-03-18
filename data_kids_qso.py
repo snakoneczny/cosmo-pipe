@@ -23,8 +23,8 @@ def get_kids_qsos():
 
     qsos = qso_candidates.loc[
         (qso_candidates['MAG_GAAP_r'] < 23.5) &
-        (qso_candidates['QSO_PHOTO'] > 0.98)
-        # (qso_candidates['DECJ2000'] > -10)
+        (qso_candidates['QSO_PHOTO'] > 0.98) &
+        (qso_candidates['DECJ2000'] > -10)
     ]
 
     return qsos
