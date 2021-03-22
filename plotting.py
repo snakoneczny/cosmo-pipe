@@ -10,6 +10,34 @@ HETDEX_LON_RANGE = [158, 234]
 HETDEX_LAT_RANGE = [43, 60]
 
 
+def plot_many_data_correlations(experiment_dict, correlation_symbol, x_min=0, x_max=None, y_min=None, y_max=None,
+                                x_scale='linear', y_scale='linear', legend_loc='upper right'):
+    # Theory, assuming the same across experiments
+    experiment = list(experiment_dict.values())[0]
+    data_to_plot = experiment.theory_correlations[correlation_symbol] - experiment.noise_curves[correlation_symbol]
+    plt.plot(experiment.l_arr, data_to_plot, 'r', label='theory', markersize=2)
+
+    # Data, iterate experiments
+
+    import itertools
+    marker = itertools.cycle(('o', 'v', 's', 'p', '*'))
+
+    for experiment_name, experiment in experiment_dict.items():
+        ell_arr = experiment.binnings[correlation_symbol].get_effective_ells()
+        data_to_plot = experiment.data_correlations[correlation_symbol] - experiment.noise_decoupled[correlation_symbol]
+        plt.errorbar(ell_arr, data_to_plot, marker=next(marker), linestyle='', label=experiment_name)
+
+    plt.xscale(x_scale)
+    plt.yscale(y_scale)
+    plt.xlim(xmin=x_min, xmax=x_max)
+    plt.ylim(ymin=y_min, ymax=y_max)
+    plt.xlabel('$\\ell$', fontsize=16)
+    plt.ylabel('$C_\\ell^{{{}}}$'.format(correlation_symbol), fontsize=16)
+    plt.legend(loc=legend_loc, ncol=2, labelspacing=0.1)
+    plt.grid()
+    plt.show()
+
+
 def plot_correlation(experiment, correlation_symbol, x_min=0, x_max=None, y_min=None, y_max=None, x_scale='linear',
                      y_scale='linear'):
     y_err = None

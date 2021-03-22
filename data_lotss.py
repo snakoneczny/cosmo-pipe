@@ -80,12 +80,12 @@ def flux_151_to_144(s_151):
     return s_144
 
 
-def get_lotss_map(lotss_data, dr=1, nside=2048):
+def get_lotss_map(lotss_data, dr=1, mask_filename=None, nside=2048):
     counts_map = get_map(lotss_data['RA'].values, lotss_data['DEC'].values, nside=nside)
     if dr == 1:
         mask = get_lotss_hetdex_mask(nside)
     elif dr == 2:
-        mask = get_lotss_dr2_mask(nside)
+        mask = get_lotss_dr2_mask(nside, filename=mask_filename)
     else:
         raise Exception('Wrong LoTSS data release number')
 
@@ -101,8 +101,8 @@ def get_lotss_map(lotss_data, dr=1, nside=2048):
     return counts_map, mask, noise_map
 
 
-def get_lotss_dr2_mask(nside):
-    filename = 'Mask_default.fits'
+def get_lotss_dr2_mask(nside, filename=None):
+    filename = 'Mask_default.fits' if filename is None else filename
     mask = hp.read_map(os.path.join(DATA_PATH, 'LoTSS/DR2/masks', filename))
     mask = hp.ud_grade(mask, nside)
     return mask

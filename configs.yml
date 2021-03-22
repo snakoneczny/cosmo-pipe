@@ -1,7 +1,8 @@
 # Configurations given in 3 groups of parameters: data, power spectra and MCMC parameters
 
 LoTSS_DR2:
-  lss_survey: LoTSS_DR2
+  lss_survey_name: LoTSS_DR2
+  lss_mask_name: Mask_noise_75percent
   flux_min_cut: 2
   nside: 512
   z_tail: 2.0
@@ -35,7 +36,7 @@ LoTSS_DR2:
 
 
 LoTSS_DR1:
-  lss_survey: LoTSS_DR1
+  lss_survey_name: LoTSS_DR1
   flux_min_cut: 2
   nside: 512
   z_tail: 2.0
@@ -61,7 +62,7 @@ LoTSS_DR1:
 
 
 KiDS_QSO:
-  lss_survey: KiDS_QSO
+  lss_survey_name: KiDS_QSO
   nside: 512
   bias: 1.6
   scale_bias: True
@@ -85,7 +86,7 @@ KiDS_QSO:
 
 
 NVSS:
-  lss_survey: NVSS
+  lss_survey_name: NVSS
   nside: 512
   bias: 2.18
   scale_bias: False

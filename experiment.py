@@ -30,7 +30,8 @@ class Experiment:
         self.map_symbols = []
 
         # Data parameters
-        self.lss_survey = None
+        self.lss_survey_name = None
+        self.lss_mask_filename = None
         self.flux_min_cut = 0.0  # mJy
         self.nside = 0
         self.z_tail = 0.0
@@ -111,6 +112,7 @@ class Experiment:
 
         # Set maps and correlations
         if set_maps:
+            self.set_data()
             self.set_maps()
         if set_correlations:
             self.set_correlations()
@@ -214,7 +216,7 @@ class Experiment:
     def get_log_prior(self, theta):
         prior = 0
         if 'bias' in self.arg_names and (
-                theta[self.arg_names.index('bias')] < 0 or theta[self.arg_names.index('bias')] > 6):
+                theta[self.arg_names.index('bias')] < 0.6 or theta[self.arg_names.index('bias')] > 6):
             prior = -np.inf
         if 'sigma8' in self.arg_names and (
                 theta[self.arg_names.index('sigma8')] < 0.2 or theta[self.arg_names.index('sigma8')] > 2):
@@ -238,7 +240,7 @@ class Experiment:
             # TODO: should include mask
             'KiDS_QSO': partial(get_redshift_distribution, self.data.get('g'), n_bins=50, z_col='Z_PHOTO_QSO')
         }
-        self.z_arr, self.n_arr = get_redshift_distribution_functions[self.lss_survey]()
+        self.z_arr, self.n_arr = get_redshift_distribution_functions[self.lss_survey_name]()
 
         self.set_binning()
         self.set_theory_correlations()
@@ -420,7 +422,7 @@ class Experiment:
         }
 
         if 'g' in self.map_symbols:
-            set_map_functions[self.lss_survey]()
+            set_map_functions[self.lss_survey_name]()
             self.processed_maps['g'] = get_overdensity_map(self.original_maps['g'], self.masks['g'],
                                                            self.noise_weight_maps.get('g'))
             self.noise_curves['gg'] = np.full(3 * self.nside, get_shot_noise(self.original_maps['g'], self.masks['g']))
@@ -438,14 +440,12 @@ class Experiment:
         self.are_maps_ready = True
 
     def set_lotss_dr2_maps(self):
-        self.data['g'] = get_lotss_dr2_data(self.flux_min_cut)
         self.original_maps['g'], self.masks['g'], self.noise_maps['g'] = get_lotss_map(
-            self.data['g'], dr=2, nside=self.nside)
+            self.data['g'], dr=2, mask_filename=self.lss_mask_filename, nside=self.nside)
         # self.noise_weight_maps['g'] = get_lotss_noise_weight_map(self.noise_maps['g'], self.masks['g'],
         #                                                          self.flux_min_cut, self.nside)
 
     def set_lotss_dr1_maps(self):
-        self.data['g'] = get_lotss_hetdex_data(self.flux_min_cut)
         self.original_maps['g'], self.masks['g'], self.noise_maps['g'] = get_lotss_map(
             self.data['g'], dr=1, nside=self.nside)
         self.noise_weight_maps['g'] = get_lotss_noise_weight_map(self.noise_maps['g'], self.masks['g'],
@@ -455,8 +455,15 @@ class Experiment:
         self.original_maps['g'], self.masks['g'] = get_nvss_map(nside=self.nside)
 
     def set_kids_qso_maps(self):
-        self.data['g'] = get_kids_qsos()
         self.original_maps['g'], self.masks['g'] = get_kids_qso_map(self.data['g'], self.nside)
+
+    def set_data(self):
+        if self.lss_survey_name == 'LoTSS_DR2':
+            self.data['g'] = get_lotss_dr2_data(self.flux_min_cut)
+        elif self.lss_survey_name == 'LoTSS_DR1':
+            self.data['g'] = get_lotss_hetdex_data(self.flux_min_cut)
+        elif self.lss_survey_name == 'KiDS_QSO':
+            self.data['g'] = get_kids_qsos()
 
 
 def show_mcmc_report(experiment_name, thin=10):
