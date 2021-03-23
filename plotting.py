@@ -39,11 +39,13 @@ def plot_many_data_correlations(experiment_dict, correlation_symbol, x_min=0, x_
 
 
 def plot_correlation(experiment, correlation_symbol, x_min=0, x_max=None, y_min=None, y_max=None, x_scale='linear',
-                     y_scale='linear'):
+                     y_scale='linear', with_error=True, title=None):
+    # Data error bars
     y_err = None
-    covariance_symbol = '-'.join([correlation_symbol, correlation_symbol])
-    if covariance_symbol in experiment.covariance_matrices:
-        y_err = np.sqrt(np.diag(experiment.covariance_matrices[covariance_symbol]))
+    if with_error:
+        covariance_symbol = '-'.join([correlation_symbol, correlation_symbol])
+        if covariance_symbol in experiment.covariance_matrices:
+            y_err = np.sqrt(np.diag(experiment.covariance_matrices[covariance_symbol]))
 
     # Data
     if correlation_symbol in experiment.data_correlations:
@@ -64,6 +66,7 @@ def plot_correlation(experiment, correlation_symbol, x_min=0, x_max=None, y_min=
     plt.ylabel('$C_\\ell^{{{}}}$'.format(correlation_symbol), fontsize=16)
     plt.legend(loc='upper right', ncol=2, labelspacing=0.1)
     plt.grid()
+    plt.title(title)
     plt.show()
 
 

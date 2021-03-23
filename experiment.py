@@ -2,6 +2,8 @@ import os
 from collections import defaultdict
 from functools import partial
 import math
+import copy
+from collections import OrderedDict
 
 import numpy as np
 import pymaster as nmt
@@ -12,6 +14,7 @@ import matplotlib.pyplot as plt
 from IPython.display import display, Math
 import json
 import yaml
+from tqdm.notebook import tqdm
 
 from env_config import PROJECT_PATH
 from utils import logger, get_shot_noise, get_overdensity_map, get_pairs, compute_master, get_correlation_matrix, \
@@ -31,7 +34,7 @@ class Experiment:
 
         # Data parameters
         self.lss_survey_name = None
-        self.lss_mask_filename = None
+        self.lss_mask_name = None
         self.flux_min_cut = 0.0  # mJy
         self.nside = 0
         self.z_tail = 0.0
@@ -271,7 +274,8 @@ class Experiment:
             self.chi_squared[correlation_symbol] = get_chi_squared(data, model, cov_matrix)
 
             zero_chi_squared = get_chi_squared(data, 0, cov_matrix)
-            self.sigmas[correlation_symbol] = math.sqrt(zero_chi_squared - self.chi_squared[correlation_symbol])
+            diff = zero_chi_squared - self.chi_squared[correlation_symbol]
+            self.sigmas[correlation_symbol] = math.sqrt(diff) if diff > 0 else None
 
     def set_inference_covariance(self):
         total_length = sum(self.n_ells.values())
@@ -441,7 +445,7 @@ class Experiment:
 
     def set_lotss_dr2_maps(self):
         self.original_maps['g'], self.masks['g'], self.noise_maps['g'] = get_lotss_map(
-            self.data['g'], dr=2, mask_filename=self.lss_mask_filename, nside=self.nside)
+            self.data['g'], dr=2, mask_filename=self.lss_mask_name, nside=self.nside)
         # self.noise_weight_maps['g'] = get_lotss_noise_weight_map(self.noise_maps['g'], self.masks['g'],
         #                                                          self.flux_min_cut, self.nside)
 
@@ -539,3 +543,35 @@ def plot_mean_tau(autocorr_time_arr):
     plt.xlabel('number of steps')
     plt.ylabel(r'mean $\hat{\tau}$')
     plt.show()
+
+
+def run_experiments(config, params_to_update, pre_data=True, pre_maps=True):
+    # Create base experiment to prepare data which is common for all experiments
+    experiment_base = Experiment(config)
+    if pre_data:
+        experiment_base.set_data()
+    if pre_maps:
+        experiment_base.set_maps()
+
+    # TODO: many params simultaneously
+    # Iterate through the parameters
+    experiments = OrderedDict()
+    for param_name, param_arr in params_to_update.items():
+        for param_val in tqdm(param_arr):
+            # TODO: hack
+            label = param_val if not isinstance(param_val, dict) else list(param_val.values())[0]
+
+            # Update experiment parameters
+            experiments[label] = copy.deepcopy(experiment_base)
+            setattr(experiments[label], param_name, param_val)
+
+            # Set data if not done previously
+            if not pre_data:
+                experiments[label].set_data()
+            if not pre_maps:
+                experiments[label].set_maps()
+
+            # Set correlations, necessary for every experiment
+            experiments[label].set_correlations()
+
+    return experiments

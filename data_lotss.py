@@ -102,8 +102,8 @@ def get_lotss_map(lotss_data, dr=1, mask_filename=None, nside=2048):
 
 
 def get_lotss_dr2_mask(nside, filename=None):
-    filename = 'Mask_default.fits' if filename is None else filename
-    mask = hp.read_map(os.path.join(DATA_PATH, 'LoTSS/DR2/masks', filename))
+    filename = 'Mask_default' if filename is None else filename
+    mask = hp.read_map(os.path.join(DATA_PATH, 'LoTSS/DR2/masks/{}.fits'.format(filename)))
     mask = hp.ud_grade(mask, nside)
     return mask
 
