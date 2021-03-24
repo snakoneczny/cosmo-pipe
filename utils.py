@@ -6,6 +6,7 @@ from astropy.table import Table
 import healpy as hp
 import pymaster as nmt
 import pyccl as ccl
+import yaml
 
 logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s', datefmt='%d/%m/%Y %H:%M:%S', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -171,3 +172,10 @@ def read_fits_to_pandas(filepath, columns=None, n=None):
 
 def get_pairs(values_arr, join_with=''):
     return [join_with.join(sorted([a, b])) for i, a in enumerate(values_arr) for b in values_arr[i:]]
+
+
+def get_config(config_name):
+    with open('../configs.yml', 'r') as config_file:
+        config = yaml.full_load(config_file)
+    config = config[config_name]
+    return config

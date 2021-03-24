@@ -11,7 +11,6 @@ import pyccl as ccl
 import emcee
 import seaborn as sns
 import matplotlib.pyplot as plt
-from IPython.display import display, Math
 import json
 import yaml
 from tqdm.notebook import tqdm
@@ -468,6 +467,11 @@ class Experiment:
             self.data['g'] = get_lotss_hetdex_data(self.flux_min_cut)
         elif self.lss_survey_name == 'KiDS_QSO':
             self.data['g'] = get_kids_qsos()
+
+    def print_correlation_statistics(self):
+        for correlation_symbol in self.correlation_symbols:
+            print('C_{} sigma: {:.2f}'.format(correlation_symbol, self.sigmas[correlation_symbol]))
+            print('C_{} chi squared: {:.2f}'.format(correlation_symbol, self.chi_squared[correlation_symbol]))
 
 
 def show_mcmc_report(experiment_name, thin=10):
