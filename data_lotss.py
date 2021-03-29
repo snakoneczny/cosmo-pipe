@@ -11,13 +11,13 @@ from env_config import DATA_PATH
 from utils import get_map, get_masked_map, get_mean_map, read_fits_to_pandas
 
 
-def get_lotss_redshift_distribution(z_tail):
+def get_lotss_redshift_distribution(z_tail, z_max=6):
     z_0 = 0.1
     gamma = 3.5
 
     z_step = 0.01
     z_min = 0
-    z_max = 100 + z_step
+    z_max = z_max + z_step
     z_arr = np.arange(z_min, z_max, z_step)
     n_arr = ((z_arr / z_0) ** 2) / (1 + (z_arr / z_0) ** 2) / (1 + (z_arr / z_tail) ** gamma)
     return z_arr, n_arr

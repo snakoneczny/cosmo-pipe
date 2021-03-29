@@ -39,7 +39,7 @@ def plot_many_data_correlations(experiment_dict, correlation_symbol, x_min=0, x_
 
 
 def plot_correlation(experiment, correlation_symbol, x_min=0, x_max=None, y_min=None, y_max=None, x_scale='linear',
-                     y_scale='linear', with_error=True, title=None):
+                     y_scale='linear', title=None, with_error=True):
     # Data error bars
     y_err = None
     if with_error:

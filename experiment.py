@@ -22,7 +22,8 @@ from data_lotss import get_lotss_hetdex_data, get_lotss_dr2_data, get_lotss_map,
     get_lotss_redshift_distribution
 from data_nvss import get_nvss_map, get_nvss_redshift_distribution
 from data_kids_qso import get_kids_qsos, get_kids_qso_map
-from data_cmb import get_cmb_lensing_map, get_cmb_lensing_noise, get_cmb_temperature_map
+from data_cmb import get_cmb_lensing_map, get_cmb_lensing_noise, get_cmb_temperature_map, \
+    get_cmb_temperature_power_spectra
 
 
 class Experiment:
@@ -306,7 +307,7 @@ class Experiment:
 
     def set_covariance_matrices(self):
         correlation_pairs = get_pairs(self.correlation_symbols, join_with='-')
-        for correlation_pair in correlation_pairs:
+        for correlation_pair in tqdm(correlation_pairs, desc='covariance matrices'):
             a1 = correlation_pair[0]
             a2 = correlation_pair[1]
             b1 = correlation_pair[3]
@@ -354,7 +355,7 @@ class Experiment:
             self.fields[map_symbol] = nmt.NmtField(self.masks[map_symbol], [self.processed_maps[map_symbol]])
 
         # Get all correlations
-        for correlation_symbol in self.correlation_symbols:
+        for correlation_symbol in tqdm(self.correlation_symbols, desc='data correlations'):
             map_symbol_a = correlation_symbol[0]
             map_symbol_b = correlation_symbol[1]
             self.data_correlations[correlation_symbol], self.workspaces[correlation_symbol] = compute_master(
@@ -387,11 +388,13 @@ class Experiment:
         }
 
         for correlation_symbol in self.all_correlation_symbols:
-            tracer_symbol_a = correlation_symbol[0]
-            tracer_symbol_b = correlation_symbol[1]
-            correlation_symbol = tracer_symbol_a + tracer_symbol_b
-            self.theory_correlations[correlation_symbol] = ccl.angular_cl(cosmology, tracers_dict[tracer_symbol_a],
-                                                                          tracers_dict[tracer_symbol_b], self.l_arr)
+            # Pass if theory correlation was set together with maps
+            if correlation_symbol not in self.theory_correlations:
+                tracer_symbol_a = correlation_symbol[0]
+                tracer_symbol_b = correlation_symbol[1]
+                correlation_symbol = tracer_symbol_a + tracer_symbol_b
+                self.theory_correlations[correlation_symbol] = ccl.angular_cl(cosmology, tracers_dict[tracer_symbol_a],
+                                                                              tracers_dict[tracer_symbol_b], self.l_arr)
 
     def set_binning(self):
         # n_ells: number of bins, for inference covariance indexing
@@ -435,10 +438,11 @@ class Experiment:
             self.processed_maps['k'] = self.original_maps['k']
             self.noise_curves['kk'] = get_cmb_lensing_noise(self.nside)
 
+        # TODO: KT correlation
         if 't' in self.map_symbols:
             self.original_maps['t'], self.masks['t'] = get_cmb_temperature_map(nside=self.nside)
             self.processed_maps['t'] = self.original_maps['t']
-            pass
+            self.theory_correlations['tt'] = get_cmb_temperature_power_spectra(self.nside)
 
         self.are_maps_ready = True
 

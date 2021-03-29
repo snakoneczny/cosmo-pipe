@@ -1,4 +1,5 @@
 import os
+import math
 
 import healpy as hp
 import numpy as np
@@ -23,6 +24,27 @@ cmb_columns_idx = struct(
 )
 
 
+def get_cmb_temperature_power_spectra(nside):
+    assert 3 * nside <= 2508
+
+    path = os.path.join(DATA_PATH, 'Planck2018/COM_PowerSpect_CMB-TT-full_R3.01.txt')
+    data = np.loadtxt(path, unpack=False)
+    data = pd.DataFrame(data, columns=['l', 'Dl', '-dDl', '+dDl'])
+
+    # TODO: 1e-12 ??
+    # cal_planck = 0.1000442E+01
+    data['Cl'] = data['Dl'] / data['l'] / (data['l'] + 1) * 2 * math.pi * 1e-12  # / (cal_planck ** 2)
+
+    l_arr = np.arange(3 * nside)
+    l_min = int(data['l'][0])
+    l_max = int(min(l_arr[-1], data['l'].values[-1]))
+    cl_l_arr = np.arange(l_min, l_max + 1)
+    cl = np.zeros(len(l_arr))
+    cl[cl_l_arr] += data['Cl'].values[:l_max - l_min + 1]
+
+    return cl
+
+
 def get_cmb_temperature_map(nside=None):
     filename = 'COM_CMB_IQU-smica_2048_R3.00_full.fits'
 
@@ -41,6 +63,23 @@ def get_cmb_temperature_map(nside=None):
 
     map = get_masked_map(map, mask)
     return map, mask
+
+
+def get_cmb_lensing_noise(nside):
+    assert nside <= 2048
+
+    path = os.path.join(DATA_PATH, 'Planck2018/COM_Lensing_2048_R2.00/nlkk.dat')
+    data = np.loadtxt(path, unpack=False)
+    data = pd.DataFrame(data, columns=['l', 'nl', 'cl+nl'])
+
+    l_arr = np.arange(3 * nside)
+    l_min = int(data['l'][0])
+    l_max = int(min(l_arr[-1], data['l'].values[-1]))
+    noise_l_arr = np.arange(l_min, l_max + 1)
+    noise = np.zeros(len(l_arr))
+    noise[noise_l_arr] += data['nl'].values[:l_max - l_min + 1]
+
+    return noise
 
 
 def get_cmb_lensing_map(nside=None):
@@ -65,20 +104,3 @@ def get_cmb_lensing_map(nside=None):
 
     map = get_masked_map(map, mask)
     return map, mask
-
-
-def get_cmb_lensing_noise(nside):
-    assert nside <= 2048
-
-    path = os.path.join(DATA_PATH, 'Planck2018/COM_Lensing_2048_R2.00/nlkk.dat')
-    data = np.loadtxt(path, unpack=False)
-    data = pd.DataFrame(data, columns=['l', 'nl', 'cl+nl'])
-
-    l_arr = np.arange(3 * nside)
-    l_min = int(data['l'][0])
-    l_max = int(min(l_arr[-1], data['l'].values[-1]))
-    noise_l_arr = np.arange(l_min, l_max + 1)
-    noise = np.zeros(len(l_arr))
-    noise[noise_l_arr] += data['nl'].values[:l_max - l_min + 1]
-
-    return noise
