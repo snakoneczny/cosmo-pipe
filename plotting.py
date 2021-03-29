@@ -71,8 +71,38 @@ def plot_correlation(experiment, correlation_symbol, x_min=0, x_max=None, y_min=
 
 
 def plot_correlation_matrix(experiment):
-    plt.matshow(experiment.inference_correlation)
-    plt.colorbar()
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    cax = ax.matshow(experiment.inference_correlation, interpolation=None)
+    fig.colorbar(cax)
+
+    half_ticks = []
+    lines = []
+    next_start = -0.5
+    for correlation_symbol in experiment.correlation_symbols:
+        n_ells = experiment.n_ells[correlation_symbol]
+        half_ticks.append(next_start + n_ells / 2)
+        next_start += n_ells
+        lines.append(next_start)
+    lines = lines[:-1]
+
+    ax.xaxis.set_ticks_position('bottom')
+    ax.yaxis.set_ticks_position('left')
+    ax.set_xticks(half_ticks)
+    ax.set_yticks(half_ticks)
+    for x in lines:
+        plt.axvline(x=x, color='black')
+        plt.axhline(y=x, color='black')
+    correlation_symbols = [pretty_print_corr_symbol(corr_symbol) for corr_symbol in experiment.correlation_symbols]
+    ax.set_xticklabels(correlation_symbols)
+    ax.set_yticklabels(correlation_symbols)
+
+
+def pretty_print_corr_symbol(correlation_symbol):
+    math_symbols = {'g': 'g', 'k': '\kappa', 't': 'T'}
+    symbol_a = correlation_symbol[0]
+    symbol_b = correlation_symbol[1]
+    return r'${} \times {}$'.format(math_symbols[symbol_a], math_symbols[symbol_b])
 
 
 def my_mollview(map, fwhm=0, unit=None, cmap='jet'):

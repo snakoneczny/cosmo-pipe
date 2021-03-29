@@ -146,6 +146,10 @@ def get_map(l, b, nside=128):
     return map_n
 
 
+def get_pairs(values_arr, join_with=''):
+    return [join_with.join(sorted([a, b])) for i, a in enumerate(values_arr) for b in values_arr[i:]]
+
+
 def read_fits_to_pandas(filepath, columns=None, n=None):
     table = Table.read(filepath, format='fits')
 
@@ -168,10 +172,6 @@ def read_fits_to_pandas(filepath, columns=None, n=None):
         table.loc[:, 'IMAFLAGS_ISO'] = table['IMAFLAGS_ISO'].astype(int)
 
     return table
-
-
-def get_pairs(values_arr, join_with=''):
-    return [join_with.join(sorted([a, b])) for i, a in enumerate(values_arr) for b in values_arr[i:]]
 
 
 def get_config(config_name):
