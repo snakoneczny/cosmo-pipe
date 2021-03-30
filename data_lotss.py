@@ -80,11 +80,11 @@ def flux_151_to_144(s_151):
     return s_144
 
 
-def get_lotss_map(lotss_data, dr=1, mask_filename=None, nside=2048):
+def get_lotss_map(lotss_data, data_release=1, mask_filename=None, nside=2048):
     counts_map = get_map(lotss_data['RA'].values, lotss_data['DEC'].values, nside=nside)
-    if dr == 1:
-        mask = get_lotss_hetdex_mask(nside)
-    elif dr == 2:
+    if data_release == 1:
+        mask = get_lotss_dr1_mask(nside)
+    elif data_release == 2:
         mask = get_lotss_dr2_mask(nside, filename=mask_filename)
     else:
         raise Exception('Wrong LoTSS data release number')
@@ -92,7 +92,8 @@ def get_lotss_map(lotss_data, dr=1, mask_filename=None, nside=2048):
     # Get noise in larger bins
     noise_map = get_mean_map(lotss_data['RA'].values, lotss_data['DEC'].values,
                              lotss_data['Isl_rms'].values, nside=256)
-    # Fill missing pixels with mean noise value  # TODO: print number of missing pixels and sky area of those
+    # TODO: print number of missing pixels and sky area of those
+    # Fill missing pixels with mean noise value
     mean_noise = noise_map[~np.isnan(noise_map)].mean()
     noise_map = np.nan_to_num(noise_map, nan=mean_noise)
     noise_map = get_masked_map(noise_map, hp.ud_grade(mask, nside_out=256))
@@ -108,12 +109,12 @@ def get_lotss_dr2_mask(nside, filename=None):
     return mask
 
 
-def get_lotss_hetdex_mask(nside):
-    npix = hp.nside2npix(nside)  # 12 * nside ^ 2
+def get_lotss_dr1_mask(nside):
+    npix = hp.nside2npix(nside)
     mask = np.zeros(npix, dtype=np.float)
     pointings = np.loadtxt(os.path.join(DATA_PATH, 'LoTSS/DR1/pointings.txt'))
     pointings_to_skip = [[164.633, 54.685], [211.012, 49.912], [221.510, 47.461], [225.340, 47.483], [227.685, 52.515]]
-    radius = math.radians(1.7)  # 0.0296706
+    radius = math.radians(1.7)
     for ra, dec in pointings:
         if [ra, dec] in pointings_to_skip:
             continue
@@ -124,22 +125,14 @@ def get_lotss_hetdex_mask(nside):
     return mask
 
 
-def get_lotss_dr2_data(flux_min_cut):
-    data_path = os.path.join(DATA_PATH, 'LoTSS/DR2', 'LoTSS_DR2_v100.srl.fits')
-    data = read_fits_to_pandas(data_path)
-    print('Original LoTSS DR2 datashape: {}'.format(data.shape))
+def get_lotss_data(data_release=2, flux_min_cut=2):
+    data_paths = {
+        1: os.path.join(DATA_PATH, 'LoTSS/DR1', 'LOFAR_HBA_T1_DR1_merge_ID_optical_f_v1.2.fits'),
+        2: os.path.join(DATA_PATH, 'LoTSS/DR2', 'LoTSS_DR2_v100.srl.fits'),
+    }
 
-    # Flux cut
-    data = data.loc[data['Total_flux'] > flux_min_cut]
-    print('Total flux of S > {}mJy: {}'.format(flux_min_cut, data.shape))
-
-    return data
-
-
-def get_lotss_hetdex_data(flux_min_cut):
-    data_path = os.path.join(DATA_PATH, 'LoTSS/DR1', 'LOFAR_HBA_T1_DR1_merge_ID_optical_f_v1.2.fits')
-    data = read_fits_to_pandas(data_path)
-    print('Original LoTSS hetdex datashape: {}'.format(data.shape))
+    data = read_fits_to_pandas(data_paths[data_release])
+    print('Original LoTSS DR{} datashape: {}'.format(data_release, data.shape))
 
     # Flux cut
     data = data.loc[data['Total_flux'] > flux_min_cut]

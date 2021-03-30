@@ -2,8 +2,8 @@
 
 LoTSS_DR2:
   lss_survey_name: LoTSS_DR2
-  lss_mask_name: Mask_coverage
-  flux_min_cut: 0.5
+  lss_mask_name: Mask_noise_99percent
+  flux_min_cut: 2
   nside: 512
   z_tail: 1.0
   bias: 1.3

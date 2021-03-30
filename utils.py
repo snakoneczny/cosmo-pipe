@@ -62,6 +62,10 @@ def get_chi_squared(data_vector, model_vector, covariance_matrix):
     return diff.dot(inverted_covariance).dot(diff)
 
 
+def bin_spectrum(workspace, spectrum):
+    return workspace.decouple_cell(workspace.couple_cell([spectrum]))[0]
+
+
 def compute_master(field_a, field_b, binning):
     workspace = nmt.NmtWorkspace()
     workspace.compute_coupling_matrix(field_a, field_b, binning)
