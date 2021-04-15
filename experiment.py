@@ -18,7 +18,7 @@ from tqdm.notebook import tqdm
 from env_config import PROJECT_PATH
 from utils import logger, get_shot_noise, get_overdensity_map, get_pairs, compute_master, get_correlation_matrix, \
     get_redshift_distribution, ISWTracer, get_chi_squared, bin_spectrum
-from data_lotss import get_lotss_data, get_lotss_map, get_lotss_noise_weight_map, get_lotss_redshift_distribution
+from data_lotss import get_lotss_data, get_lotss_map, get_lotss_redshift_distribution, read_lotss_noise_weight_map
 from data_nvss import get_nvss_map, get_nvss_redshift_distribution
 from data_kids_qso import get_kids_qsos, get_kids_qso_map
 from data_cmb import get_cmb_lensing_map, get_cmb_lensing_noise, get_cmb_temperature_map, \
@@ -26,7 +26,7 @@ from data_cmb import get_cmb_lensing_map, get_cmb_lensing_noise, get_cmb_tempera
 
 
 class Experiment:
-    def __init__(self, config, set_maps=False, set_correlations=False):
+    def __init__(self, config, set_data=False, set_maps=False, set_correlations=False):
         # Data parameters
         self.lss_survey_name = None
         self.lss_mask_name = None
@@ -55,11 +55,11 @@ class Experiment:
         # Data containters
         self.map_symbols = []
         self.data = {}
-        self.masks = {}
-        self.original_maps = {}
-        self.processed_maps = {}
+        self.base_maps = {}
         self.noise_maps = {}
-        self.noise_weight_maps = {}
+        self.weight_maps = {}
+        self.processed_maps = {}
+        self.masks = {}
         self.noise_curves = defaultdict(int)
 
         # Correlation containers
@@ -110,8 +110,9 @@ class Experiment:
         self.experiment_name = '__'.join(experiment_name_parts)
 
         # Set maps and correlations
-        if set_maps:
+        if set_data:
             self.set_data()
+        if set_maps:
             self.set_maps()
         if set_correlations:
             self.set_correlations()
@@ -236,7 +237,7 @@ class Experiment:
             'LoTSS_DR2': partial(get_lotss_redshift_distribution, z_tail=self.z_tail),
             'LoTSS_DR1': partial(get_lotss_redshift_distribution, z_tail=self.z_tail),
             'NVSS': get_nvss_redshift_distribution,
-            # TODO: should include mask
+            # TODO: should include mask (?)
             'KiDS_QSO': partial(get_redshift_distribution, self.data.get('g'), n_bins=50, z_col='Z_PHOTO_QSO')
         }
         self.z_arr, self.n_arr = get_redshift_distribution_functions[self.lss_survey_name]()
@@ -402,43 +403,45 @@ class Experiment:
 
     def set_maps(self):
         set_map_functions = {
-            'LoTSS_DR2': partial(self.set_lotss_maps, data_release=2, with_noise_weight=True),
-            'LoTSS_DR1': partial(self.set_lotss_maps, data_release=1, with_noise_weight=True),
+            'LoTSS_DR2': partial(self.set_lotss_maps, data_release=2),
+            'LoTSS_DR1': partial(self.set_lotss_maps, data_release=1),
             'NVSS': self.set_nvss_maps,
             'KiDS_QSO': self.set_kids_qso_maps,
         }
 
         if 'g' in self.map_symbols:
             set_map_functions[self.lss_survey_name]()
-            self.processed_maps['g'] = get_overdensity_map(self.original_maps['g'], self.masks['g'],
-                                                           self.noise_weight_maps.get('g'))
-            self.noise_curves['gg'] = np.full(3 * self.nside, get_shot_noise(self.original_maps['g'], self.masks['g']))
+            self.processed_maps['g'] = get_overdensity_map(self.base_maps['g'], self.masks['g'])
+            self.noise_curves['gg'] = np.full(3 * self.nside, get_shot_noise(self.base_maps['g'], self.masks['g']))
 
         if 'k' in self.map_symbols:
-            self.original_maps['k'], self.masks['k'] = get_cmb_lensing_map(self.nside)
-            self.processed_maps['k'] = self.original_maps['k']
+            self.base_maps['k'], self.masks['k'] = get_cmb_lensing_map(self.nside)
+            self.processed_maps['k'] = self.base_maps['k']
             self.noise_curves['kk'] = get_cmb_lensing_noise(self.nside)
 
         # TODO: kT correlation
         if 't' in self.map_symbols:
-            self.original_maps['t'], self.masks['t'] = get_cmb_temperature_map(nside=self.nside)
-            self.processed_maps['t'] = self.original_maps['t']
+            self.base_maps['t'], self.masks['t'] = get_cmb_temperature_map(nside=self.nside)
+            self.processed_maps['t'] = self.base_maps['t']
             self.theory_correlations['tt'] = get_cmb_temperature_power_spectra(self.nside)
 
         self.are_maps_ready = True
 
-    def set_lotss_maps(self, data_release=2, with_noise_weight=True):
-        self.original_maps['g'], self.masks['g'], self.noise_maps['g'] = get_lotss_map(
+    def set_lotss_maps(self, data_release=2):
+        self.base_maps['g'], self.masks['g'], self.noise_maps['g'] = get_lotss_map(
             self.data['g'], data_release=data_release, mask_filename=self.lss_mask_name, nside=self.nside)
-        if with_noise_weight:
-            self.noise_weight_maps['g'] = get_lotss_noise_weight_map(self.noise_maps['g'], self.masks['g'],
-                                                                     self.flux_min_cut, self.nside)
+
+        self.weight_maps['g'] = read_lotss_noise_weight_map(self.nside, data_release, self.flux_min_cut, 5)
+
+        self.masks['g'] = self.masks['g'] * self.weight_maps['g']
+        self.masks['g'] /= self.masks['g'].max()
+        self.masks['g'][self.masks['g'] < 0.5] = 0
 
     def set_nvss_maps(self):
-        self.original_maps['g'], self.masks['g'] = get_nvss_map(nside=self.nside)
+        self.base_maps['g'], self.masks['g'] = get_nvss_map(nside=self.nside)
 
     def set_kids_qso_maps(self):
-        self.original_maps['g'], self.masks['g'] = get_kids_qso_map(self.data['g'], self.nside)
+        self.base_maps['g'], self.masks['g'] = get_kids_qso_map(self.data['g'], self.nside)
 
     def set_data(self):
         if self.lss_survey_name == 'LoTSS_DR2':
@@ -529,12 +532,12 @@ def plot_mean_tau(autocorr_time_arr):
     plt.show()
 
 
-def run_experiments(config, params_to_update, pre_data=True, pre_maps=True):
+def run_experiments(config, params_to_update, data_ready=True, maps_ready=True):
     # Create base experiment to prepare data which is common for all experiments
     experiment_base = Experiment(config)
-    if pre_data:
+    if data_ready:
         experiment_base.set_data()
-    if pre_maps:
+    if maps_ready:
         experiment_base.set_maps()
 
     # TODO: many params simultaneously
@@ -550,9 +553,9 @@ def run_experiments(config, params_to_update, pre_data=True, pre_maps=True):
             setattr(experiments[label], param_name, param_val)
 
             # Set data if not done previously
-            if not pre_data:
+            if not data_ready:
                 experiments[label].set_data()
-            if not pre_maps:
+            if not maps_ready:
                 experiments[label].set_maps()
 
             # Set correlations, necessary for every experiment

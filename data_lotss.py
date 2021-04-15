@@ -3,12 +3,11 @@ import os
 
 import healpy as hp
 import numpy as np
-from scipy.integrate import simps
-from scipy.special._ufuncs import erfc
-from tqdm.notebook import tqdm
+from scipy.special import erf
+from tqdm import tqdm
 
 from env_config import DATA_PATH
-from utils import get_map, get_masked_map, get_mean_map, read_fits_to_pandas
+from utils import get_map, get_masked_map, get_aggregated_map, read_fits_to_pandas
 
 
 def get_lotss_redshift_distribution(z_tail, z_max=6):
@@ -23,43 +22,65 @@ def get_lotss_redshift_distribution(z_tail, z_max=6):
     return z_arr, n_arr
 
 
-def get_lotss_noise_weight_map(lotss_noise_map, lotss_mask, flux_min_cut, nside_out):
-    n_bins = 1000
-    flux_max = 2000
-    skads = get_skads_sim_data()
-    fluxes = skads['S_144'].loc[skads['S_144'] < flux_max]
+def read_lotss_noise_weight_map(nside, data_release, flux_min_cut, signal_to_noise):
+    file_path = os.path.join(DATA_PATH, 'LoTSS/DR{}/weight_map__mean_minflux-{}_snr-{}.fits'.format(
+        data_release, flux_min_cut, signal_to_noise))
+    weight_map = hp.read_map(file_path)
+    weight_map = hp.ud_grade(weight_map, nside)
+    return weight_map
 
-    hist, bin_edges = np.histogram(fluxes, bins=n_bins)
-    flux_arr = [bin_edges[i] + (bin_edges[i + 1] - bin_edges[i]) / 2 for i in range(len(bin_edges) - 1)]
 
-    # Normalize to unit integral
-    d_flux = (bin_edges[1] - bin_edges[0])
-    area = simps(hist, dx=d_flux)
-    flux_proba_arr = hist / area
+def get_lotss_noise_weight_map(noise_map, flux_cut=2, signal_to_noise=5):
+    # Read flux distribution from SKADS' S3-SEX simulation
+    file_path = os.path.join(DATA_PATH, 'SKADS/skads_flux_counts.result')
+    log_flux, counts = np.loadtxt(file_path, unpack=True, delimiter=',', skiprows=1)
+    log_flux += 3  # Use mJy instead of Jy
+    # Assuming equal spacing
+    log_flux = log_flux[counts >= 0]
+    counts = counts[counts >= 0]
+    probabilities = counts / np.sum(counts)
 
-    integral_error = abs(sum(flux_proba_arr) * d_flux - 1)
-    print('Flux probability integral error: {:.4f}'.format(integral_error))
-    print('d flux: {:.4f} (mJy)'.format(d_flux))
-    assert integral_error < 0.1, 'Integral error equals {:.4f}'.format(integral_error)
+    # Transfer 1400 to 144
+    alpha = -0.7
+    log_flux = log_flux + alpha * np.log10(144. / 1400.)
 
-    npix = hp.nside2npix(nside=256)  # 12 * nside ^ 2
-    noise_weight_map = np.zeros(npix, dtype=np.float)
+    # Compute probability map
+    proba_map = np.zeros(len(noise_map))
+    for i, noise in tqdm(enumerate(noise_map)):
+        if noise > 0:
+            threshold = max(signal_to_noise * noise, flux_cut)
+            x = (threshold - 10. ** log_flux) / (np.sqrt(2.) * noise)
+            comp = 0.5 * (1 - erf(x))
+            proba_map[i] = np.sum(probabilities * comp)
 
-    # For each pixel
-    a = d_flux * 0.5
-    for i in tqdm(range(len(lotss_noise_map))):
-        if not lotss_noise_map.mask[i]:
-            # Integrate d_flux * flux_proba * 0.5 * erfc((flux_true - flux_thr) / (sqrt(2) * sigma_n))
-            b = (math.sqrt(2) * lotss_noise_map[i])
-            for j in range(len(flux_proba_arr)):
-                flux_thr = max(5 * lotss_noise_map[i], flux_min_cut)
-                noise_weight_map[i] += a * flux_proba_arr[j] * erfc((flux_arr[j] - flux_thr) / b)
+    return proba_map
 
-    noise_weight_map = hp.ud_grade(noise_weight_map, nside_out=nside_out)
-    noise_weight_map = get_masked_map(noise_weight_map, lotss_mask)
 
-    return noise_weight_map
-
+# def get_lotss_noise_weight_map(lotss_noise_map, lotss_mask, flux_min_cut, nside_out):
+#     n_bins = 1000
+#     flux_max = 2000
+#     skads = get_skads_sim_data()
+#     fluxes = skads['S_144'].loc[skads['S_144'] < flux_max]
+#     flux_arr, flux_proba_arr, d_flux = get_normalized_dist(fluxes, n_bins=n_bins)
+#
+#     npix = hp.nside2npix(nside=256)  # 12 * nside ^ 2
+#     noise_weight_map = np.zeros(npix, dtype=np.float)
+#
+#     # For each pixel
+#     a = d_flux * 0.5
+#     for i in tqdm(range(len(lotss_noise_map))):
+#         if not lotss_noise_map.mask[i]:
+#             # Integrate d_flux * flux_proba * 0.5 * erfc((flux_true - flux_thr) / (sqrt(2) * sigma_n))
+#             b = (math.sqrt(2) * lotss_noise_map[i])
+#             for j in range(len(flux_proba_arr)):
+#                 flux_thr = max(5 * lotss_noise_map[i], flux_min_cut)
+#                 noise_weight_map[i] += a * flux_proba_arr[j] * erfc((flux_arr[j] - flux_thr) / b)
+#
+#     noise_weight_map = hp.ud_grade(noise_weight_map, nside_out=nside_out)
+#     noise_weight_map /= np.max(noise_weight_map)
+#     noise_weight_map = get_masked_map(noise_weight_map, lotss_mask)
+#
+#     return noise_weight_map
 
 def get_skads_sim_data():
     skads = read_fits_to_pandas(os.path.join(DATA_PATH, 'SKADS/100sqdeg_5uJy_s1400_components_fixed.fits'))
@@ -75,12 +96,13 @@ def get_skads_sim_data():
 
 
 def flux_151_to_144(s_151):
+    # TODO
     spectral_index = -0.7
     s_144 = s_151 * math.pow(144, spectral_index) / math.pow(151, spectral_index)
     return s_144
 
 
-def get_lotss_map(lotss_data, data_release=1, mask_filename=None, nside=2048):
+def get_lotss_map(lotss_data, data_release, mask_filename=None, nside=2048):
     counts_map = get_map(lotss_data['RA'].values, lotss_data['DEC'].values, nside=nside)
     if data_release == 1:
         mask = get_lotss_dr1_mask(nside)
@@ -90,8 +112,8 @@ def get_lotss_map(lotss_data, data_release=1, mask_filename=None, nside=2048):
         raise Exception('Wrong LoTSS data release number')
 
     # Get noise in larger bins
-    noise_map = get_mean_map(lotss_data['RA'].values, lotss_data['DEC'].values,
-                             lotss_data['Isl_rms'].values, nside=256)
+    noise_map = get_aggregated_map(lotss_data['RA'].values, lotss_data['DEC'].values,
+                                   lotss_data['Isl_rms'].values, nside=256, aggregation='mean')
     # TODO: print number of missing pixels and sky area of those
     # Fill missing pixels with mean noise value
     mean_noise = noise_map[~np.isnan(noise_map)].mean()
@@ -125,7 +147,7 @@ def get_lotss_dr1_mask(nside):
     return mask
 
 
-def get_lotss_data(data_release=2, flux_min_cut=2):
+def get_lotss_data(data_release, flux_min_cut=2):
     data_paths = {
         1: os.path.join(DATA_PATH, 'LoTSS/DR1', 'LOFAR_HBA_T1_DR1_merge_ID_optical_f_v1.2.fits'),
         2: os.path.join(DATA_PATH, 'LoTSS/DR2', 'LoTSS_DR2_v100.srl.fits'),
@@ -136,6 +158,6 @@ def get_lotss_data(data_release=2, flux_min_cut=2):
 
     # Flux cut
     data = data.loc[data['Total_flux'] > flux_min_cut]
-    print('Total flux of S > {}mJy: {}'.format(flux_min_cut, data.shape))
+    print('Total flux of S > {} mJy: {}'.format(flux_min_cut, data.shape))
 
     return data

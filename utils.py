@@ -7,6 +7,7 @@ import healpy as hp
 import pymaster as nmt
 import pyccl as ccl
 import yaml
+from scipy.integrate import simps
 
 logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s', datefmt='%d/%m/%Y %H:%M:%S', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -83,11 +84,34 @@ def get_correlation_matrix(covariance_matrix):
     return correlation_matrix
 
 
-def get_overdensity_map(counts_map, mask, noise_weight_map=None):
-    noise_weight_map = np.ones(len(counts_map)) if noise_weight_map is None else noise_weight_map
-    # TODO: should be weighted by values in mask?
-    sky_mean = (counts_map / noise_weight_map).mean()
-    overdensity_map = counts_map / noise_weight_map / sky_mean - 1
+def get_redshift_distribution(data, n_bins=50, z_col='Z_PHOTO_QSO'):
+    n_arr, z_arr = np.histogram(data[z_col], bins=n_bins)
+    z_arr = np.array([(z_arr[i + 1] + z_arr[i]) / 2 for i in range(len(z_arr) - 1)])
+    return z_arr, n_arr
+
+
+def get_normalized_dist(data, n_bins=1000, with_print=False):
+    hist, bin_edges = np.histogram(data, bins=n_bins)
+    x_arr = [bin_edges[i] + (bin_edges[i + 1] - bin_edges[i]) / 2 for i in range(len(bin_edges) - 1)]
+
+    # Normalize to unit integral
+    dx = (bin_edges[1] - bin_edges[0])
+    area = simps(hist, dx=dx)
+    proba_arr = hist / area
+
+    integral_error = abs(sum(proba_arr) * dx - 1)
+    if with_print:
+        print('Integral error: {:.4f}'.format(integral_error))
+        print('dx: {:.4f} (mJy)'.format(dx))
+    assert integral_error < 0.1, 'Integral error equals {:.4f}'.format(integral_error)
+
+    return x_arr, proba_arr, dx
+
+
+def get_overdensity_map(counts_map, mask):
+    # TODO: mask apodization?
+    sky_mean = counts_map.sum() / mask.sum()
+    overdensity_map = counts_map / mask / sky_mean - 1
     overdensity_map = get_masked_map(overdensity_map, mask)
     return overdensity_map
 
@@ -119,34 +143,24 @@ def tansform_map_and_mask_to_nside(map, mask, nside):
     return map, mask
 
 
-def get_mean_map(l, b, v, nside):
-    thetas, phis = np.radians(-b + 90.), np.radians(l)
-    npix = hp.nside2npix(nside)  # 12 * nside ^ 2
-    n_obj_map = np.zeros(npix, dtype=np.float)
-    mean_map = np.zeros(npix, dtype=np.float)
+def get_aggregated_map(ra_arr, dec_arr, v_arr, nside, aggregation='mean'):
+    npix = hp.nside2npix(nside)
+    mean_map = np.zeros(npix)
+    pixel_indices = hp.ang2pix(nside, ra_arr, dec_arr, lonlat=True)
+    pix_unique = np.unique(pixel_indices)
 
-    indices = hp.ang2pix(nside, thetas, phis, nest=False)
-    for i, j in enumerate(indices):
-        # Add objects weight and store a count
-        mean_map[j] += v[i]
-        n_obj_map[j] += 1
-    mean_map /= n_obj_map
+    aggregation_func = np.mean if aggregation == 'mean' else np.median
+    for i, i_pix in enumerate(pix_unique):
+        vals = v_arr[pixel_indices == i_pix]
+        mean_map[i_pix] = aggregation_func(vals)
 
     return mean_map
 
 
-def get_redshift_distribution(data, n_bins=50, z_col='Z_PHOTO_QSO'):
-    n_arr, z_arr = np.histogram(data[z_col], bins=n_bins)
-    z_arr = np.array([(z_arr[i + 1] + z_arr[i]) / 2 for i in range(len(z_arr) - 1)])
-    return z_arr, n_arr
-
-
-def get_map(l, b, nside=128):
-    phis, thetas = np.radians(l), np.radians(-b + 90.)
+def get_map(ra_arr, dec_arr, nside=512):
     n_pix = hp.nside2npix(nside)
-    pixel_indices = hp.ang2pix(nside, thetas, phis)
-    map_n = np.bincount(pixel_indices, minlength=n_pix)
-    map_n = map_n.astype(float)
+    pixel_indices = hp.ang2pix(nside, ra_arr, dec_arr, lonlat=True)
+    map_n = np.bincount(pixel_indices, minlength=n_pix).astype(float)
     return map_n
 
 

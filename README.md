@@ -2,8 +2,9 @@ Auto-correlations, cross-correlations and cosmological MCMC fits from Large Scal
 
 **Instructions:**
 1. Define experiment configuration in configs.yml
-2. Investigate data and correlations in Jupyter Notebooks
+2. Investigate maps and correlations in Jupyter Notebooks
 3. Run MCMC ```python run_emcee.py -c <name of the configuration> -t <tag added as suffix to the experiment name>```
+4. Check MCMC results in Jupyter Notebooks
 
 **Libraries used:**
 - Core Cosmological Library (CCL) (https://github.com/LSSTDESC/CCL) (https://github.com/LSSTDESC/CCLX)
