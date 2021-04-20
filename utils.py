@@ -108,6 +108,14 @@ def get_normalized_dist(data, n_bins=1000, with_print=False):
     return x_arr, proba_arr, dx
 
 
+def merge_mask_with_weights(mask, weights, min_weight=0.5):
+    mask *= weights
+    mask /= mask.max()
+    mask[mask < min_weight] = 0
+    mask = get_masked_map(mask, mask)
+    return mask
+
+
 def get_overdensity_map(counts_map, mask):
     # TODO: mask apodization?
     sky_mean = counts_map.sum() / mask.sum()

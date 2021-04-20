@@ -109,10 +109,11 @@ def pretty_print_corr_symbol(correlation_symbol):
     return r'${} \times {}$'.format(math_symbols[symbol_a], math_symbols[symbol_b])
 
 
-def my_mollview(map, fwhm=0, unit=None, cmap='jet'):
+def my_mollview(map, fwhm=0, unit=None, cmap='jet', zoom=False):
     if fwhm > 0:
         map = hp.sphtfunc.smoothing(map, fwhm=math.radians(fwhm))
-    hp.mollview(map, cmap=cmap, unit=unit)
+    view_func = hp.zoomtool.mollzoom if zoom else hp.mollview
+    view_func(map, cmap=cmap, unit=unit)
     hp.graticule()
 
 

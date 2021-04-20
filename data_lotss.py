@@ -82,16 +82,15 @@ def get_lotss_noise_weight_map(noise_map, flux_cut=2, signal_to_noise=5):
 #
 #     return noise_weight_map
 
+
 def get_skads_sim_data():
     skads = read_fits_to_pandas(os.path.join(DATA_PATH, 'SKADS/100sqdeg_5uJy_s1400_components_fixed.fits'))
-
     # Conversion from log(I) to I
     skads['S_151'] = skads['i_151'].apply(math.exp)
     # Conversion to mJy
     skads['S_151'] *= 10 ** 3
     # Extrapolation to 144MHz
     skads['S_144'] = skads['S_151'].apply(flux_151_to_144)
-
     return skads
 
 
@@ -102,32 +101,48 @@ def flux_151_to_144(s_151):
     return s_144
 
 
-def get_lotss_map(lotss_data, data_release, mask_filename=None, nside=2048):
+def get_lotss_map(lotss_data, data_release, mask_filename=None, nside=2048, cut_pixels=True, masked=True):
     counts_map = get_map(lotss_data['RA'].values, lotss_data['DEC'].values, nside=nside)
-    if data_release == 1:
-        mask = get_lotss_dr1_mask(nside)
-    elif data_release == 2:
-        mask = get_lotss_dr2_mask(nside, filename=mask_filename)
+    if masked:
+        if data_release == 1:
+            mask = get_lotss_dr1_mask(nside)
+        elif data_release == 2:
+            mask = get_lotss_dr2_mask(nside, filename=mask_filename, cut_pixels=cut_pixels)
+        else:
+            raise Exception('Wrong LoTSS data release number')
     else:
-        raise Exception('Wrong LoTSS data release number')
+        mask = None
 
     # Get noise in larger bins
     noise_map = get_aggregated_map(lotss_data['RA'].values, lotss_data['DEC'].values,
                                    lotss_data['Isl_rms'].values, nside=256, aggregation='mean')
-    # TODO: print number of missing pixels and sky area of those
-    # Fill missing pixels with mean noise value
-    mean_noise = noise_map[~np.isnan(noise_map)].mean()
-    noise_map = np.nan_to_num(noise_map, nan=mean_noise)
-    noise_map = get_masked_map(noise_map, hp.ud_grade(mask, nside_out=256))
 
-    counts_map = get_masked_map(counts_map, mask)
+    if masked:
+        noise_map = get_masked_map(noise_map, hp.ud_grade(mask, nside_out=256))
+        counts_map = get_masked_map(counts_map, mask)
+
     return counts_map, mask, noise_map
 
 
-def get_lotss_dr2_mask(nside, filename=None):
+def get_lotss_dr2_mask(nside, filename=None, cut_pixels=False):
     filename = 'Mask_default' if filename is None else filename
     mask = hp.read_map(os.path.join(DATA_PATH, 'LoTSS/DR2/masks/{}.fits'.format(filename)))
     mask = hp.ud_grade(mask, nside)
+
+    # for i in range(len(mask)):
+    #     lon, lat = hp.pixelfunc.pix2ang(nside, i, lonlat=True)
+    #     if 60 < lon < 300:
+    #         mask[i] = 0
+
+    if cut_pixels:
+        pixels_to_skip = [[-149.24, 54.294, 2], [-179.86, 52.31, 1], [-145, 54, 1], [-145, 46, 1]]
+        pix_size = hp.pixelfunc.nside2resol(nside)
+        for lon, lat, pix_radius in pixels_to_skip:
+            vec = hp.pixelfunc.ang2vec(lon, lat, lonlat=True)
+            radius = pix_size * pix_radius
+            indices = hp.query_disc(nside, vec, radius)
+            mask[indices] = 0
+
     return mask
 
 
@@ -144,20 +159,23 @@ def get_lotss_dr1_mask(nside):
         vec = hp.pixelfunc.ang2vec(theta, phi, lonlat=False)
         indices = hp.query_disc(nside, vec, radius)
         mask[indices] = 1
+
     return mask
 
 
 def get_lotss_data(data_release, flux_min_cut=2):
     data_paths = {
-        1: os.path.join(DATA_PATH, 'LoTSS/DR1', 'LOFAR_HBA_T1_DR1_merge_ID_optical_f_v1.2.fits'),
         2: os.path.join(DATA_PATH, 'LoTSS/DR2', 'LoTSS_DR2_v100.srl.fits'),
+        1: os.path.join(DATA_PATH, 'LoTSS/DR1', 'LOFAR_HBA_T1_DR1_merge_ID_optical_f_v1.2b_restframe.fits'),
+        # 1: os.path.join(DATA_PATH, 'LoTSS/DR1', 'LOFAR_HBA_T1_DR1_catalog_v1.0.srl.fits'),  # noise map only
     }
 
     data = read_fits_to_pandas(data_paths[data_release])
     print('Original LoTSS DR{} datashape: {}'.format(data_release, data.shape))
 
     # Flux cut
-    data = data.loc[data['Total_flux'] > flux_min_cut]
-    print('Total flux of S > {} mJy: {}'.format(flux_min_cut, data.shape))
+    if flux_min_cut:
+        data = data.loc[data['Total_flux'] > flux_min_cut]
+        print('Total flux of S > {} mJy: {}'.format(flux_min_cut, data.shape))
 
     return data

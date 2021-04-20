@@ -59,9 +59,9 @@ def get_cmb_temperature_map(nside=None):
 
     # Adjust
     map, mask = tansform_map_and_mask_to_nside(map, mask, nside=nside)
-    mask[mask < 0.1] = 0  # Visualization purpose
 
     map = get_masked_map(map, mask)
+    mask = get_masked_map(mask, mask)
     return map, mask
 
 
@@ -103,4 +103,5 @@ def get_cmb_lensing_map(nside=None):
     mask[mask < 0.1] = 0  # Visualization purpose
 
     map = get_masked_map(map, mask)
+    mask = get_masked_map(mask, mask)
     return map, mask

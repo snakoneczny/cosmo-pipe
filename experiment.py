@@ -17,7 +17,7 @@ from tqdm.notebook import tqdm
 
 from env_config import PROJECT_PATH
 from utils import logger, get_shot_noise, get_overdensity_map, get_pairs, compute_master, get_correlation_matrix, \
-    get_redshift_distribution, ISWTracer, get_chi_squared, bin_spectrum
+    get_redshift_distribution, ISWTracer, get_chi_squared, bin_spectrum, merge_mask_with_weights
 from data_lotss import get_lotss_data, get_lotss_map, get_lotss_redshift_distribution, read_lotss_noise_weight_map
 from data_nvss import get_nvss_map, get_nvss_redshift_distribution
 from data_kids_qso import get_kids_qsos, get_kids_qso_map
@@ -345,6 +345,7 @@ class Experiment:
             self.data_correlations[correlation_symbol], self.workspaces[correlation_symbol] = compute_master(
                 self.fields[map_symbol_a], self.fields[map_symbol_b], self.binnings[correlation_symbol])
 
+        # TODO
         # Decouple noise curves
         # for correlation_symbol in self.noise_curves.keys():
         #     if isinstance(self.noise_curves[correlation_symbol], np.ndarray) and correlation_symbol in self.workspaces:
@@ -430,12 +431,8 @@ class Experiment:
     def set_lotss_maps(self, data_release=2):
         self.base_maps['g'], self.masks['g'], self.noise_maps['g'] = get_lotss_map(
             self.data['g'], data_release=data_release, mask_filename=self.lss_mask_name, nside=self.nside)
-
         self.weight_maps['g'] = read_lotss_noise_weight_map(self.nside, data_release, self.flux_min_cut, 5)
-
-        self.masks['g'] = self.masks['g'] * self.weight_maps['g']
-        self.masks['g'] /= self.masks['g'].max()
-        self.masks['g'][self.masks['g'] < 0.5] = 0
+        self.masks['g'] = merge_mask_with_weights(self.masks['g'], self.weight_maps['g'], min_weight=0.5)
 
     def set_nvss_maps(self):
         self.base_maps['g'], self.masks['g'] = get_nvss_map(nside=self.nside)
