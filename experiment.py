@@ -17,7 +17,7 @@ from tqdm.notebook import tqdm
 
 from env_config import PROJECT_PATH
 from utils import logger, get_shot_noise, get_overdensity_map, get_pairs, compute_master, get_correlation_matrix, \
-    get_redshift_distribution, ISWTracer, get_chi_squared, bin_spectrum, merge_mask_with_weights
+    get_redshift_distribution, ISWTracer, get_chi_squared, decouple_correlation, merge_mask_with_weights
 from data_lotss import get_lotss_data, get_lotss_map, get_lotss_redshift_distribution, read_lotss_noise_weight_map
 from data_nvss import get_nvss_map, get_nvss_redshift_distribution
 from data_kids_qso import get_kids_qsos, get_kids_qso_map
@@ -61,6 +61,7 @@ class Experiment:
         self.processed_maps = {}
         self.masks = {}
         self.noise_curves = defaultdict(int)
+        self.noise_decoupled = defaultdict(int)
 
         # Correlation containers
         self.z_arr = []
@@ -201,8 +202,8 @@ class Experiment:
 
         # Bin spectra using coupling matrices in workspaces
         for correlation_symbol in self.correlation_symbols:
-            correlations[correlation_symbol] = bin_spectrum(self.workspaces[correlation_symbol],
-                                                            correlations[correlation_symbol])
+            correlations[correlation_symbol] = decouple_correlation(self.workspaces[correlation_symbol],
+                                                                    correlations[correlation_symbol])
 
         # Calculate log prob
         model = np.concatenate(
@@ -243,18 +244,15 @@ class Experiment:
         self.z_arr, self.n_arr = get_redshift_distribution_functions[self.lss_survey_name]()
 
         self.set_binning()
-        self.set_theory_correlations()
-        for correlation_symbol in self.theory_correlations.keys():
-            self.theory_correlations[correlation_symbol] += self.noise_curves[correlation_symbol]
-
         self.set_data_correlations()
-        self.set_data_vector()
+        self.set_theory_correlations()
 
         self.set_covariance_matrices()
+        self.set_sigmas()
+
         self.set_inference_covariance()
         self.inverted_covariance = np.linalg.inv(self.inference_covariance)
-
-        self.set_sigmas()
+        self.set_data_vector()
 
         self.are_correlations_ready = True
 
@@ -264,7 +262,7 @@ class Experiment:
             cov_matrix = self.covariance_matrices[correlation_symbol + '-' + correlation_symbol]
 
             model = self.theory_correlations[correlation_symbol]
-            model = bin_spectrum(self.workspaces[correlation_symbol], model)
+            model = decouple_correlation(self.workspaces[correlation_symbol], model)
             self.chi_squared[correlation_symbol] = get_chi_squared(data, model, cov_matrix)
 
             zero_chi_squared = get_chi_squared(data, 0, cov_matrix)
@@ -326,9 +324,8 @@ class Experiment:
     def set_data_vector(self):
         data_vectors = []
         for correlation_symbol in self.correlation_symbols:
-            # TODO: add noise to theory rather than substract from observation (?)
             # Subtract noise from data because theory spectra are created without noise during the sampling
-            noise = self.noise_curves[correlation_symbol]
+            noise = self.noise_decoupled[correlation_symbol]
             noise = noise[:self.n_ells[correlation_symbol]] if isinstance(noise, np.ndarray) else noise
             data_vectors.append(self.data_correlations[correlation_symbol][:self.n_ells[correlation_symbol]] - noise)
         self.data_vector = np.concatenate(data_vectors)
@@ -345,12 +342,18 @@ class Experiment:
             self.data_correlations[correlation_symbol], self.workspaces[correlation_symbol] = compute_master(
                 self.fields[map_symbol_a], self.fields[map_symbol_b], self.binnings[correlation_symbol])
 
-        # TODO
         # Decouple noise curves
-        # for correlation_symbol in self.noise_curves.keys():
-        #     if isinstance(self.noise_curves[correlation_symbol], np.ndarray) and correlation_symbol in self.workspaces:
-        #         self.noise_decoupled[correlation_symbol] = self.workspaces[correlation_symbol].decouple_cell(
-        #             self.workspaces[correlation_symbol].couple_cell([self.noise_curves[correlation_symbol]]))[0]
+        keys = self.noise_curves.keys()
+        for correlation_symbol in keys:
+            if isinstance(self.noise_curves[correlation_symbol], np.ndarray) and correlation_symbol in self.workspaces:
+                if correlation_symbol == 'gg':
+                    noise_decoupled = self.workspaces[correlation_symbol].decouple_cell(
+                        [self.noise_curves[correlation_symbol]])[0]
+                    self.noise_decoupled[correlation_symbol] = noise_decoupled
+                    self.noise_curves[correlation_symbol] = np.mean(noise_decoupled)
+                else:
+                    self.noise_decoupled[correlation_symbol] = decouple_correlation(
+                        self.workspaces[correlation_symbol], self.noise_curves[correlation_symbol])
 
     def set_theory_correlations(self):
         # Get cosmology parameters
@@ -379,6 +382,9 @@ class Experiment:
                 correlation_symbol = tracer_symbol_a + tracer_symbol_b
                 self.theory_correlations[correlation_symbol] = ccl.angular_cl(cosmology, tracers_dict[tracer_symbol_a],
                                                                               tracers_dict[tracer_symbol_b], self.l_arr)
+
+        for correlation_symbol in self.theory_correlations.keys():
+            self.theory_correlations[correlation_symbol] += self.noise_curves[correlation_symbol]
 
     def set_binning(self):
         for correlation_symbol in self.correlation_symbols:

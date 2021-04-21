@@ -63,7 +63,7 @@ def get_chi_squared(data_vector, model_vector, covariance_matrix):
     return diff.dot(inverted_covariance).dot(diff)
 
 
-def bin_spectrum(workspace, spectrum):
+def decouple_correlation(workspace, spectrum):
     return workspace.decouple_cell(workspace.couple_cell([spectrum]))[0]
 
 
@@ -117,18 +117,20 @@ def merge_mask_with_weights(mask, weights, min_weight=0.5):
 
 
 def get_overdensity_map(counts_map, mask):
-    # TODO: mask apodization?
     sky_mean = counts_map.sum() / mask.sum()
     overdensity_map = counts_map / mask / sky_mean - 1
     overdensity_map = get_masked_map(overdensity_map, mask)
     return overdensity_map
 
 
-def get_shot_noise(map, mask):
-    sky_frac = np.sum(mask) / np.shape(mask)[0]
-    # TODO: not only non zero but weighted mean?
-    n_obj = np.sum(map[np.nonzero(mask)])
-    shot_noise = 4.0 * math.pi * sky_frac / n_obj
+def get_shot_noise(counts_map, mask):
+    # sky_frac = np.sum(mask > 0) / np.shape(mask)[0]
+    # n_obj = counts_map.sum()
+    # shot_noise = 4.0 * math.pi * sky_frac / n_obj
+    counts_mean = counts_map.sum() / mask.sum()
+    n_pix = len(counts_map)
+    density = counts_mean * n_pix / (4 * np.pi)
+    shot_noise = mask.sum() / len(mask) / density
     return shot_noise
 
 

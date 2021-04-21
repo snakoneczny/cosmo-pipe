@@ -22,11 +22,8 @@ def plot_many_data_correlations(experiment_dict, correlation_symbol, x_min=0, x_
     marker = itertools.cycle(('o', 'v', 's', 'p', '*'))
     for experiment_name, experiment in experiment_dict.items():
         ell_arr = experiment.binnings[correlation_symbol].get_effective_ells()
-        noise = experiment.noise_curves[correlation_symbol][0] if correlation_symbol == 'gg' else 0
-        data_to_plot = experiment.data_correlations[correlation_symbol] - noise
+        data_to_plot = experiment.data_correlations[correlation_symbol] - experiment.noise_curves[correlation_symbol]
         plt.errorbar(ell_arr, data_to_plot, marker=next(marker), linestyle='', label=experiment_name)
-        if noise:
-            plt.axhline(y=noise, color='grey', label='noise')
 
     plt.xscale(x_scale)
     plt.yscale(y_scale)
@@ -51,11 +48,11 @@ def plot_correlation(experiment, correlation_symbol, x_min=0, x_max=None, y_min=
     # Data
     if correlation_symbol in experiment.data_correlations:
         ell_arr = experiment.binnings[correlation_symbol].get_effective_ells()
-        noise = experiment.noise_curves[correlation_symbol][0] if correlation_symbol == 'gg' else 0
+        noise = experiment.noise_decoupled[correlation_symbol]
         data_to_plot = experiment.data_correlations[correlation_symbol] - noise
         plt.errorbar(ell_arr, data_to_plot, yerr=y_err, fmt='ob', label='data', markersize=2)
-        if noise:
-            plt.axhline(y=noise, color='grey', label='noise')
+        if correlation_symbol == 'gg':
+            plt.plot(ell_arr, noise, color='grey', marker='o', label='noise', markersize=2)
 
     # Theory
     if correlation_symbol in experiment.theory_correlations:
