@@ -36,4 +36,5 @@ p_map[p_map == 0] = hp.UNSEEN
 hp.mollzoom(p_map)
 hp.mollzoom(msk)
 plt.show()
-hp.write_map(fname_out, p_map, overwrite=True)
+hp.write_map(fname_out, [p_map*msk, p_map, msk], overwrite=True,
+             column_names=['p_map', 'p_map_comp', 'p_map_geom'])
