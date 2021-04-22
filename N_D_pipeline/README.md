@@ -6,7 +6,6 @@
 
 MISSING:
 - Rotate kappa
-- Generate counts map
 
 
 To run the full vanilla pipeline from scratch you would run something like:
