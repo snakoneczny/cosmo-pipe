@@ -231,7 +231,7 @@ class Experiment:
         self.p0_walkers = np.array(
             [p0 + p0_scales * np.random.uniform(low=-1, high=1, size=n_dim) for i in range(self.n_walkers)])
 
-    def set_correlations(self):
+    def set_correlations(self, with_covariance=True):
         assert self.are_maps_ready
 
         get_redshift_distribution_functions = {
@@ -247,14 +247,15 @@ class Experiment:
         self.set_data_correlations()
         self.set_theory_correlations()
 
-        self.set_covariance_matrices()
-        self.set_sigmas()
+        if with_covariance:
+            self.set_covariance_matrices()
+            self.set_sigmas()
 
-        self.set_inference_covariance()
-        self.inverted_covariance = np.linalg.inv(self.inference_covariance)
-        self.set_data_vector()
+            self.set_inference_covariance()
+            self.inverted_covariance = np.linalg.inv(self.inference_covariance)
+            self.set_data_vector()
 
-        self.are_correlations_ready = True
+            self.are_correlations_ready = True
 
     def set_sigmas(self):
         for correlation_symbol in self.data_correlations:

@@ -101,13 +101,13 @@ def flux_151_to_144(s_151):
     return s_144
 
 
-def get_lotss_map(lotss_data, data_release, mask_filename=None, nside=2048, cut_pixels=True, masked=True):
+def get_lotss_map(lotss_data, data_release, mask_filename=None, nside=2048, cut_pixels=False, masked=True):
     counts_map = get_map(lotss_data['RA'].values, lotss_data['DEC'].values, nside=nside)
     if masked:
         if data_release == 1:
             mask = get_lotss_dr1_mask(nside)
         elif data_release == 2:
-            mask = get_lotss_dr2_mask(nside, filename=mask_filename, cut_pixels=cut_pixels)
+            mask = get_lotss_dr2_mask(nside, filename=mask_filename)
         else:
             raise Exception('Wrong LoTSS data release number')
     else:
@@ -117,6 +117,19 @@ def get_lotss_map(lotss_data, data_release, mask_filename=None, nside=2048, cut_
     noise_map = get_aggregated_map(lotss_data['RA'].values, lotss_data['DEC'].values,
                                    lotss_data['Isl_rms'].values, nside=256, aggregation='mean')
 
+    # Cut artificially high count pixels
+    if cut_pixels:
+        indices_max = np.argsort(counts_map)[::-1]
+        pix_size = hp.pixelfunc.nside2resol(512)
+        for ipix in indices_max:
+            if counts_map[ipix] > 14:
+                vec = hp.pixelfunc.pix2vec(nside, ipix)
+                radius = pix_size * 2
+                indices = hp.query_disc(nside, vec, radius)
+                mask[indices] = 0
+            else:
+                break
+
     if masked:
         noise_map = get_masked_map(noise_map, hp.ud_grade(mask, nside_out=256))
         counts_map = get_masked_map(counts_map, mask)
@@ -124,7 +137,7 @@ def get_lotss_map(lotss_data, data_release, mask_filename=None, nside=2048, cut_
     return counts_map, mask, noise_map
 
 
-def get_lotss_dr2_mask(nside, filename=None, cut_pixels=False):
+def get_lotss_dr2_mask(nside, filename=None):
     filename = 'Mask_default' if filename is None else filename
     mask = hp.read_map(os.path.join(DATA_PATH, 'LoTSS/DR2/masks/{}.fits'.format(filename)))
     mask = hp.ud_grade(mask, nside)
@@ -133,15 +146,6 @@ def get_lotss_dr2_mask(nside, filename=None, cut_pixels=False):
     #     lon, lat = hp.pixelfunc.pix2ang(nside, i, lonlat=True)
     #     if 60 < lon < 300:
     #         mask[i] = 0
-
-    if cut_pixels:
-        pixels_to_skip = [[-149.24, 54.294, 2], [-179.86, 52.31, 1], [-145, 54, 1], [-145, 46, 1]]
-        pix_size = hp.pixelfunc.nside2resol(nside)
-        for lon, lat, pix_radius in pixels_to_skip:
-            vec = hp.pixelfunc.ang2vec(lon, lat, lonlat=True)
-            radius = pix_size * pix_radius
-            indices = hp.query_disc(nside, vec, radius)
-            mask[indices] = 0
 
     return mask
 

@@ -2,7 +2,7 @@
 
 LoTSS_DR2:
   lss_survey_name: LoTSS_DR2
-  lss_mask_name: Mask_coverage
+  lss_mask_name: Mask_noise_99percent
   flux_min_cut: 2
   nside: 512
   z_tail: 2.0
@@ -47,8 +47,8 @@ LoTSS_DR1:
   cosmology_matter_power_spectrum: halofit
   correlation_symbols: [gg, gk]
   l_max: {
-    gg: 510,
-    gk: 510,
+    gg: 1010,
+    gk: 1010,
   }
   ells_per_bin: {
     gg: 50,
