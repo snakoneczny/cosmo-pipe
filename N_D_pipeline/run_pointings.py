@@ -1,5 +1,13 @@
 from utils import Pointings
 import os
+import sys
+
+
+if len(sys.argv) != 2:
+    print("Usage: run_pointings.py output_dir")
+    exit(1)
+dirout = sys.argv[1]
+
 
 def find_unique_batch():
     found = False
@@ -11,7 +19,7 @@ def find_unique_batch():
         ifile += 1
     return fname
 
-pt = Pointings('data/pointings.txt', '/mnt/extraspace/damonge/LensLotss')
+pt = Pointings('data/pointings.txt', dirout)
 n_pointings = len(pt.data['name'])
 
 n_added = 0

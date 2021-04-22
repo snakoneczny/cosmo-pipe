@@ -1,12 +1,18 @@
 from utils import Pointings
 import healpy as hp
 import numpy as np
+import sys
 
+
+if len(sys.argv) != 1:
+    print("Usage: join_pointing_maps.py output_dir")
+    exit(1)
+dirout = sys.argv[1]
 
 nside = 2048
 npix = hp.nside2npix(nside)
 
-pt = Pointings('data/pointings.txt', '/mnt/extraspace/damonge/LensLotss')
+pt = Pointings('data/pointings.txt', dirout)
 n_pointings = len(pt.data['name'])
 
 mask = np.zeros(npix)
@@ -31,6 +37,6 @@ vmean[igood] = vmean[igood]/ngood[igood]
 vstd[igood] = vstd[igood]/ngood[igood]
 vstd = np.sqrt(vstd - vmean**2)
 
-hp.write_map("/mnt/extraspace/damonge/LensLotss/maps_all.fits.gz",
+hp.write_map(dirout + "maps_all.fits.gz",
              [mask, vmean, vstd, ngood],
              column_names=['mask', 'rms_mean', 'rms_std', 'n_good'])
