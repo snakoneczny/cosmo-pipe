@@ -1,5 +1,6 @@
 import logging
 import math
+import os
 
 import numpy as np
 from astropy.table import Table
@@ -8,6 +9,9 @@ import pymaster as nmt
 import pyccl as ccl
 import yaml
 from scipy.integrate import simps
+import pandas as pd
+
+from env_config import PROJECT_PATH
 
 logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s', datefmt='%d/%m/%Y %H:%M:%S', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -207,3 +211,27 @@ def get_config(config_name):
         config = yaml.full_load(config_file)
     config = config[config_name]
     return config
+
+
+# TODO: save covariance/errors (?)
+def save_correlations(experiment):
+    experiment_name = get_correlations_filename(experiment)
+    file_path = os.path.join(PROJECT_PATH, 'outputs/correlations/{}.csv'.format(experiment_name))
+    df = pd.DataFrame()
+    for correlation_symbol in experiment.correlation_symbols:
+        df['l'] = experiment.binnings[correlation_symbol].get_effective_ells()
+        df['Cl_{}'.format(correlation_symbol)] = experiment.data_correlations[correlation_symbol]
+        df['nl_{}'.format(correlation_symbol)] = experiment.noise_curves[correlation_symbol]
+    df.to_csv(file_path, index=False)
+
+
+def read_correlations(filename):
+    file_path = os.path.join(PROJECT_PATH, 'outputs/correlations/{}.csv'.format(filename))
+    return pd.read_csv(file_path)
+
+
+def get_correlations_filename(experiment):
+    optical_name = 'optical' if experiment.is_optical else 'srl'
+    experiment_name = '{}_{}_nside={}_gg-gk_bin={}'.format(experiment.lss_survey_name, optical_name, experiment.nside,
+                                                           experiment.ells_per_bin['gg'])
+    return experiment_name

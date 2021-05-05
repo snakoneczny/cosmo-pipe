@@ -25,10 +25,10 @@ def plot_many_data_correlations(experiment_dict, correlation_symbol, x_min=0, x_
         data_to_plot = experiment.data_correlations[correlation_symbol] - experiment.noise_curves[correlation_symbol]
         plt.errorbar(ell_arr, data_to_plot, marker=next(marker), linestyle='', label=experiment_name)
 
-    plt.xscale(x_scale)
-    plt.yscale(y_scale)
     plt.xlim(xmin=x_min, xmax=x_max)
     plt.ylim(ymin=y_min, ymax=y_max)
+    plt.xscale(x_scale)
+    plt.yscale(y_scale)
     plt.xlabel('$\\ell$', fontsize=16)
     plt.ylabel('$C_\\ell^{{{}}}$'.format(correlation_symbol), fontsize=16)
     plt.legend(loc=legend_loc, ncol=2, labelspacing=0.1)
@@ -37,7 +37,7 @@ def plot_many_data_correlations(experiment_dict, correlation_symbol, x_min=0, x_
 
 
 def plot_correlation(experiment, correlation_symbol, x_min=0, x_max=None, y_min=None, y_max=None, x_scale='linear',
-                     y_scale='linear', title=None, with_error=True):
+                     y_scale='linear', title=None, with_error=True, is_raw=False):
     # Data error bars
     y_err = None
     if with_error:
@@ -49,7 +49,8 @@ def plot_correlation(experiment, correlation_symbol, x_min=0, x_max=None, y_min=
     if correlation_symbol in experiment.data_correlations:
         ell_arr = experiment.binnings[correlation_symbol].get_effective_ells()
         noise = experiment.noise_decoupled[correlation_symbol]
-        data_to_plot = experiment.data_correlations[correlation_symbol] - noise
+        correlation_dict = experiment.raw_data_correlations if is_raw else experiment.data_correlations
+        data_to_plot = correlation_dict[correlation_symbol] - noise
         plt.errorbar(ell_arr, data_to_plot, yerr=y_err, fmt='ob', label='data', markersize=2)
         if correlation_symbol == 'gg':
             plt.plot(ell_arr, noise, color='grey', marker='o', label='noise', markersize=2)
@@ -59,10 +60,10 @@ def plot_correlation(experiment, correlation_symbol, x_min=0, x_max=None, y_min=
         data_to_plot = experiment.theory_correlations[correlation_symbol] - experiment.noise_curves[correlation_symbol]
         plt.plot(experiment.l_arr, data_to_plot, 'r', label='theory', markersize=2)
 
-    plt.xscale(x_scale)
-    plt.yscale(y_scale)
     plt.xlim(xmin=x_min, xmax=x_max)
     plt.ylim(ymin=y_min, ymax=y_max)
+    plt.xscale(x_scale)
+    plt.yscale(y_scale)
     plt.xlabel('$\\ell$', fontsize=16)
     plt.ylabel('$C_\\ell^{{{}}}$'.format(correlation_symbol), fontsize=16)
     plt.legend(loc='upper right', ncol=2, labelspacing=0.1)

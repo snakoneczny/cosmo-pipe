@@ -15,7 +15,7 @@ file_path = os.path.join(DATA_PATH, 'LoTSS/DR{}/weight_map__mean_minflux-{}_snr-
     data_release, flux_min_cut, signal_to_noise))
 
 # Get noise weight map
-data = get_lotss_data(data_release=data_release, flux_min_cut=None)
+data = get_lotss_data(data_release=data_release, flux_min_cut=None, optical=False)
 _, _, noise_map = get_lotss_map(data, data_release=data_release, nside=256, cut_pixels=False, masked=False)
 weight_map = get_lotss_noise_weight_map(noise_map, flux_cut=flux_min_cut, signal_to_noise=signal_to_noise)
 

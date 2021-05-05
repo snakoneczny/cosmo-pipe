@@ -17,7 +17,8 @@ from tqdm.notebook import tqdm
 
 from env_config import PROJECT_PATH
 from utils import logger, get_shot_noise, get_overdensity_map, get_pairs, compute_master, get_correlation_matrix, \
-    get_redshift_distribution, ISWTracer, get_chi_squared, decouple_correlation, merge_mask_with_weights
+    get_redshift_distribution, ISWTracer, get_chi_squared, decouple_correlation, merge_mask_with_weights, \
+    read_correlations
 from data_lotss import get_lotss_data, get_lotss_map, get_lotss_redshift_distribution, read_lotss_noise_weight_map
 from data_nvss import get_nvss_map, get_nvss_redshift_distribution
 from data_kids_qso import get_kids_qsos, get_kids_qso_map
@@ -29,6 +30,7 @@ class Experiment:
     def __init__(self, config, set_data=False, set_maps=False, set_correlations=False):
         # Data parameters
         self.lss_survey_name = None
+        self.is_optical = True
         self.lss_mask_name = None
         self.flux_min_cut = 0
         self.nside = 0
@@ -68,6 +70,7 @@ class Experiment:
         self.n_arr = []
         self.theory_correlations = {}
         self.data_correlations = {}
+        self.raw_data_correlations = {}
         self.chi_squared = {}
         self.sigmas = {}
         self.fields = {}
@@ -356,6 +359,19 @@ class Experiment:
                     self.noise_decoupled[correlation_symbol] = decouple_correlation(
                         self.workspaces[correlation_symbol], self.noise_curves[correlation_symbol])
 
+        # Scale auto-correlations for LoTSS DR2 non-optical data
+        if self.lss_survey_name == 'LoTSS_DR2' and not self.is_optical:
+        # if not self.is_optical:
+            corr_optical = read_correlations(
+                'LoTSS_DR1_optical_nside={}_gg-gk_bin={}'.format(self.nside, self.ells_per_bin['gg']))
+            corr_srl = read_correlations(
+                'LoTSS_DR1_srl_nside={}_gg-gk_bin={}'.format(self.nside, self.ells_per_bin['gg']))
+            ratio = (corr_optical['Cl_gg'] - corr_optical['nl_gg']) / (corr_srl['Cl_gg'] - corr_srl['nl_gg'])
+            self.raw_data_correlations['gg'] = self.data_correlations['gg'].copy()
+            self.data_correlations['gg'] -= self.noise_curves['gg']
+            self.data_correlations['gg'] *= ratio
+            self.data_correlations['gg'] += self.noise_curves['gg']
+
     def set_theory_correlations(self):
         # Get cosmology parameters
         with open(os.path.join(PROJECT_PATH, 'cosmologies.yml'), 'r') as cosmology_file:
@@ -400,10 +416,14 @@ class Experiment:
                 self.n_ells[correlation_symbol] = n_ells
 
             else:
-                l_max = self.l_max[correlation_symbol]
                 ells_per_bin = self.ells_per_bin[correlation_symbol]
+                l_max = self.l_max[correlation_symbol]
+                if l_max:
+                    self.binnings[correlation_symbol] = nmt.NmtBin.from_lmax_linear(l_max, ells_per_bin)
+                else:
+                    l_max = 3 * self.nside
+                    self.binnings[correlation_symbol] = nmt.NmtBin.from_nside_linear(self.nside, ells_per_bin)
 
-                self.binnings[correlation_symbol] = nmt.NmtBin.from_lmax_linear(l_max, ells_per_bin)
                 self.n_ells[correlation_symbol] = int((l_max - 2) / ells_per_bin)
 
         # Create dense array of ells, for theoretical power spectra
@@ -449,9 +469,9 @@ class Experiment:
 
     def set_data(self):
         if self.lss_survey_name == 'LoTSS_DR2':
-            self.data['g'] = get_lotss_data(data_release=2, flux_min_cut=self.flux_min_cut)
+            self.data['g'] = get_lotss_data(data_release=2, flux_min_cut=self.flux_min_cut, optical=self.is_optical)
         elif self.lss_survey_name == 'LoTSS_DR1':
-            self.data['g'] = get_lotss_data(data_release=1, flux_min_cut=self.flux_min_cut)
+            self.data['g'] = get_lotss_data(data_release=1, flux_min_cut=self.flux_min_cut, optical=self.is_optical)
         elif self.lss_survey_name == 'KiDS_QSO':
             self.data['g'] = get_kids_qsos()
 

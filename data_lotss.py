@@ -122,7 +122,7 @@ def get_lotss_map(lotss_data, data_release, mask_filename=None, nside=2048, cut_
         indices_max = np.argsort(counts_map)[::-1]
         pix_size = hp.pixelfunc.nside2resol(512)
         for ipix in indices_max:
-            if counts_map[ipix] > 14:
+            if counts_map[ipix] > 11:
                 vec = hp.pixelfunc.pix2vec(nside, ipix)
                 radius = pix_size * 2
                 indices = hp.query_disc(nside, vec, radius)
@@ -167,14 +167,15 @@ def get_lotss_dr1_mask(nside):
     return mask
 
 
-def get_lotss_data(data_release, flux_min_cut=2):
-    data_paths = {
-        2: os.path.join(DATA_PATH, 'LoTSS/DR2', 'LoTSS_DR2_v100.srl.fits'),
-        1: os.path.join(DATA_PATH, 'LoTSS/DR1', 'LOFAR_HBA_T1_DR1_merge_ID_optical_f_v1.2b_restframe.fits'),
-        # 1: os.path.join(DATA_PATH, 'LoTSS/DR1', 'LOFAR_HBA_T1_DR1_catalog_v1.0.srl.fits'),  # noise map only
-    }
+def get_lotss_data(data_release, flux_min_cut=2, optical=True):
+    if data_release == 1:
+        filename = 'LOFAR_HBA_T1_DR1_merge_ID_optical_f_v1.2b_restframe.fits' if optical else \
+            'LOFAR_HBA_T1_DR1_catalog_v1.0.srl.fits'
+    elif data_release == 2:
+        filename = 'LoTSS_DR2_v100.srl.fits'
+    data_path = os.path.join(DATA_PATH, 'LoTSS/DR{}'.format(data_release), filename)
 
-    data = read_fits_to_pandas(data_paths[data_release])
+    data = read_fits_to_pandas(data_path)
     print('Original LoTSS DR{} datashape: {}'.format(data_release, data.shape))
 
     # Flux cut
