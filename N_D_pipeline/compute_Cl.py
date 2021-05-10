@@ -5,20 +5,24 @@ import os
 from utils import Bandpowers, Field
 from astropy.io import fits
 import sys
+from scipy.interpolate import interp1d
 
 
-if len(sys.argv) != 9:
-    print("Usage: compute_Cl.py output_dir catalog_name p_map_name kappa_name mask_kappa_name noise_kappa_name flux_threshold SN_threshold")
+if len(sys.argv) != 10:
+    print("Usage: compute_Cl.py output_dir catalog_name "
+          "p_map_name kappa_name mask_kappa_name "
+          "noise_kappa_name prefix_out I_thr q_thr")
     exit(1)
+
 dirsave = sys.argv[1]
 cat_name = sys.argv[2]
 p_map_name = sys.argv[3]
 kappa_name = sys.argv[4]
 mask_k_name = sys.argv[5]
 noise_k_name = sys.argv[6]
-I_thr = float(sys.argv[7])
-q_thr = float(sys.argv[8])
-
+prefix_out = sys.argv[7]
+I_thr = float(sys.argv[8])
+q_thr = float(sys.argv[9])
 nside = 2048
 os.system(f'mkdir -p {dirsave}')
 
@@ -36,15 +40,16 @@ cat = fits.open(cat_name)[1].data
 npix = hp.nside2npix(nside)
 ipix = hp.ang2pix(nside, cat['RA'], cat['DEC'], lonlat=True)
 nc = np.bincount(ipix[(cat['Total_flux'] > I_thr) &
-                      (cat['Total_flux']/cat['Total_flux'] >= q_thr)],
+                      (cat['Total_flux']/cat['E_Total_flux'] >= q_thr)],
                  minlength=npix)
-ncounts_name = f'{dirsave}/counts_map_Icut{I_thr}_{q_thr}sig.fits.gz', nc)
+ncounts_name = f'{dirsave}/counts_map_Icut{I_thr}_{q_thr}sig_{prefix_out}.fits.gz'
 hp.write_map(ncounts_name, nc, overwrite=True)
 
 # Create fields
-f_g = Field(ncounts_name, p_map_name, 'g', nside)
+f_g = Field(ncounts_name, p_map_name, 'g', nside, mask_thr=0.0)
 f_k = Field(kappa_name, mask_k_name, 'k', nside,
             fname_kappa_noise=noise_k_name)
+
 
 # Mode-coupling matrices
 def get_wsp(f1, f2):
@@ -56,19 +61,25 @@ def get_wsp(f1, f2):
     else:
         w.read_from(fname)
     return w
+
+
 wgg = get_wsp(f_g, f_g)
 wgk = get_wsp(f_g, f_k)
 wkk = get_wsp(f_k, f_k)
 
 # Power spectra
 leff = B.bn.get_effective_ells()
-clgg = wgg.decouple_cell(nmt.compute_coupled_cell(f_g.get_field(), f_g.get_field()))[0]
-clgk = wgk.decouple_cell(nmt.compute_coupled_cell(f_g.get_field(), f_k.get_field()))[0]
-clkk = wkk.decouple_cell(nmt.compute_coupled_cell(f_k.get_field(), f_k.get_field()))[0]
+clgg = wgg.decouple_cell(nmt.compute_coupled_cell(f_g.get_field(),
+                                                  f_g.get_field()))[0]
+clgk = wgk.decouple_cell(nmt.compute_coupled_cell(f_g.get_field(),
+                                                  f_k.get_field()))[0]
+clkk = wkk.decouple_cell(nmt.compute_coupled_cell(f_k.get_field(),
+                                                  f_k.get_field()))[0]
 
 # Noise bias
 nlgg = wgg.decouple_cell(f_g.get_nl_coupled())[0]
 nlkk = wkk.decouple_cell(f_k.get_nl_coupled())[0]
+
 
 # Covariance MCM
 def get_cwsp(f1, f2, f3, f4):
@@ -81,6 +92,8 @@ def get_cwsp(f1, f2, f3, f4):
     else:
         cw.read_from(fname)
     return cw
+
+
 cwgggg = get_cwsp(f_g, f_g, f_g, f_g)
 cwgggk = get_cwsp(f_g, f_g, f_g, f_k)
 cwgkgk = get_cwsp(f_g, f_k, f_g, f_k)
@@ -88,11 +101,13 @@ cwgkgk = get_cwsp(f_g, f_k, f_g, f_k)
 
 # Power spectra for covariance matrix
 # For now we use the measurements themselves
-from scipy.interpolate import interp1d
 
-def interp_eval(l, cl, l_ev):
-    clf = interp1d(l, cl, bounds_error=False, fill_value=(cl[0], cl[-1]))
+
+def interp_eval(ll, cl, l_ev):
+    clf = interp1d(ll, cl, bounds_error=False, fill_value=(cl[0], cl[-1]))
     return np.array([clf(l_ev)])
+
+
 ls = np.arange(3*nside)
 clc_gg = interp_eval(leff, clgg, ls)
 clc_gk = interp_eval(leff, clgk, ls)
@@ -138,7 +153,7 @@ cov_gk_gk = nmt.gaussian_covariance(cwgkgk, 0, 0, 0, 0,
                                     clc_gg, clc_gk, clc_gk, clc_kk,
                                     wgk, wgk)
 
-np.savez(f"{dirsave}/cls_cov.npz",
+np.savez(f"{dirsave}/cls_{prefix_out}.npz",
          ls=leff,
          clgg=clgg, clgk=clgk, clkk=clkk,
          nlgg=nlgg, nlkk=nlkk,

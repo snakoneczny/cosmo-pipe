@@ -2,15 +2,35 @@ import numpy as np
 import pyccl as ccl
 import healpy as hp
 import pymaster as nmt
+from scipy.special import erf
 
 
 class Pointings(object):
-    def __init__(self, fname_pointings, prefix_out):
+    def __init__(self, fname_pointings, prefix_out, dr=2, bad_pointings=None):
         self.prefix_out = prefix_out
-        self.data = np.genfromtxt(fname_pointings,
-                                  dtype='S256,<f8,<f8,S256,S256,S256,S256,S256',
-                                  names=['name','ra','dec','fr_mosaic',
-                                         'fr_rms','fr_res','lr_mosaic','cat'])
+        self.dr = dr
+        if self.dr == 2:
+            self.data = np.genfromtxt(fname_pointings,
+                                      dtype='S256,<f8,<f8,S256,S256,S256,S256,S256',
+                                      names=['name','ra','dec','fr_mosaic',
+                                             'fr_rms','fr_res','lr_mosaic','cat'])
+        elif self.dr == 1:
+            self.data = np.genfromtxt(fname_pointings,
+                                      dtype='S256,<f8,<f8,S256,S256,S256,S256,S256',
+                                      names=['name','ra','dec','fr_mosaic',
+                                             'fr_rms','fr_res','lr_mosaic','lr_res'])
+        else:
+            raise ValueError("'dr' can be 1 or 2")
+
+        if bad_pointings is None:
+            self.bad = {}
+        else:
+            dbad = np.genfromtxt(bad_pointings,
+                                 dtype='S256,<f8,<f8',
+                                 names=['name', 'ra', 'dec'])
+            self.bad = {d['name'].decode(): [d['ra'], d['dec']]
+                        for d in dbad}
+
 
 class Bandpowers(object):
     """
@@ -52,7 +72,7 @@ class Bandpowers(object):
 
 class Field(object):
     def __init__(self, fname_map, fname_mask, kind, nside,
-                 fname_kappa_noise=None):
+                 fname_kappa_noise=None, mask_thr=0):
         self.fname_map = fname_map
         self.fname_mask = fname_mask
         self.kind = kind
@@ -65,6 +85,7 @@ class Field(object):
         self.cosmo = None
         self.tracer = None
         self.msk = None
+        self.msk_thr = mask_thr
 
     def _read_maps(self):
         mp = self._read_map(self.fname_map, self.nside)
@@ -72,6 +93,8 @@ class Field(object):
         if self.kind == 'g':
             # Scale mask
             msk = msk / np.amax(msk)
+            mp[msk <= self.msk_thr] = 0
+            msk[msk <= self.msk_thr] = 0
             # Compute mean and delta
             self.mean_n = np.sum(mp[msk > 0])/np.sum(msk[msk > 0])
             mp[msk > 0] = mp[msk > 0] / (self.mean_n * msk[msk > 0]) - 1
