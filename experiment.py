@@ -40,10 +40,8 @@ class Experiment:
 
         # Correlation parameters
         self.correlation_symbols = []
-        self.l_min = {}
         self.l_max = {}
         self.ells_per_bin = {}
-        self.ell_lengths = {}
         self.cosmology_name = None
         self.cosmology_matter_power_spectrum = None
         self.cosmology_params = None
@@ -207,6 +205,7 @@ class Experiment:
         for correlation_symbol in self.correlation_symbols:
             correlations[correlation_symbol] = decouple_correlation(self.workspaces[correlation_symbol],
                                                                     correlations[correlation_symbol])
+            correlations[correlation_symbol] = correlations[correlation_symbol][:self.n_ells[correlation_symbol]]
 
         # Calculate log prob
         model = np.concatenate(
@@ -261,17 +260,18 @@ class Experiment:
             self.are_correlations_ready = True
 
     def set_sigmas(self):
-        for correlation_symbol in self.data_correlations:
-            data = self.data_correlations[correlation_symbol]
-            cov_matrix = self.covariance_matrices[correlation_symbol + '-' + correlation_symbol]
+        for corr_symbol in self.data_correlations:
+            data = self.data_correlations[corr_symbol][:self.n_ells[corr_symbol]]
+            cov_matrix = self.covariance_matrices[corr_symbol + '-' + corr_symbol]
+            cov_matrix = cov_matrix[:self.n_ells[corr_symbol], :self.n_ells[corr_symbol]]
 
-            model = self.theory_correlations[correlation_symbol]
-            model = decouple_correlation(self.workspaces[correlation_symbol], model)
-            self.chi_squared[correlation_symbol] = get_chi_squared(data, model, cov_matrix)
+            model = self.theory_correlations[corr_symbol]
+            model = decouple_correlation(self.workspaces[corr_symbol], model)[:self.n_ells[corr_symbol]]
+            self.chi_squared[corr_symbol] = get_chi_squared(data, model, cov_matrix)
 
             zero_chi_squared = get_chi_squared(data, 0, cov_matrix)
-            diff = zero_chi_squared - self.chi_squared[correlation_symbol]
-            self.sigmas[correlation_symbol] = math.sqrt(diff) if diff > 0 else None
+            diff = zero_chi_squared - self.chi_squared[corr_symbol]
+            self.sigmas[corr_symbol] = math.sqrt(diff) if diff > 0 else None
 
     def set_inference_covariance(self):
         total_length = sum(self.n_ells.values())
@@ -287,7 +287,7 @@ class Experiment:
                 # TODO: make sure the order is right, fix last indexing
                 self.inference_covariance[a_start: a_end, b_start: b_end] = \
                     self.covariance_matrices[
-                        corr_symbol_b + '-' + corr_symbol_a]  # [:self.n_ells[corr_symbol_a], :self.n_ells[corr_symbol_b]]
+                        corr_symbol_b + '-' + corr_symbol_a][:self.n_ells[corr_symbol_a], :self.n_ells[corr_symbol_b]]
 
                 b_start += self.n_ells[corr_symbol_b]
             a_start += self.n_ells[corr_symbol_a]
@@ -361,7 +361,7 @@ class Experiment:
 
         # Scale auto-correlations for LoTSS DR2 non-optical data
         if self.lss_survey_name == 'LoTSS_DR2' and not self.is_optical:
-        # if not self.is_optical:
+            # if not self.is_optical:
             corr_optical = read_correlations(
                 'LoTSS_DR1_optical_nside={}_gg-gk_bin={}'.format(self.nside, self.ells_per_bin['gg']))
             corr_srl = read_correlations(
@@ -405,26 +405,13 @@ class Experiment:
 
     def set_binning(self):
         for correlation_symbol in self.correlation_symbols:
-            if correlation_symbol in self.ell_lengths:
-                l_min = self.l_min[correlation_symbol]
-                ell_lengths = self.ell_lengths[correlation_symbol]
-                n_ells = len(ell_lengths)
-                ell_ini = [int(l_min + np.sum(ell_lengths[:i])) for i in range(n_ells)]
-                ell_end = [int(l_min + np.sum(ell_lengths[:i + 1])) for i in range(n_ells)]
+            ells_per_bin = self.ells_per_bin[correlation_symbol]
+            self.binnings[correlation_symbol] = nmt.NmtBin.from_nside_linear(self.nside, ells_per_bin)
 
-                self.binnings[correlation_symbol] = nmt.NmtBin.from_edges(ell_ini, ell_end)
-                self.n_ells[correlation_symbol] = n_ells
-
-            else:
-                ells_per_bin = self.ells_per_bin[correlation_symbol]
-                l_max = self.l_max[correlation_symbol]
-                if l_max:
-                    self.binnings[correlation_symbol] = nmt.NmtBin.from_lmax_linear(l_max, ells_per_bin)
-                else:
-                    l_max = 3 * self.nside
-                    self.binnings[correlation_symbol] = nmt.NmtBin.from_nside_linear(self.nside, ells_per_bin)
-
-                self.n_ells[correlation_symbol] = int((l_max - 2) / ells_per_bin)
+            # Save number of ells to use in inference, sigma calculation, covariance matrices, etc.
+            l_max = self.l_max[correlation_symbol]
+            l_max = 3 * self.nside if not l_max else l_max
+            self.n_ells[correlation_symbol] = int((l_max - 2) / ells_per_bin)
 
         # Create dense array of ells, for theoretical power spectra
         self.l_arr = np.arange(3 * self.nside)
@@ -458,6 +445,7 @@ class Experiment:
     def set_lotss_maps(self, data_release=2):
         self.base_maps['g'], self.masks['g'], self.noise_maps['g'] = get_lotss_map(
             self.data['g'], data_release=data_release, mask_filename=self.lss_mask_name, nside=self.nside)
+        # Probability mask
         self.weight_maps['g'] = read_lotss_noise_weight_map(self.nside, data_release, self.flux_min_cut, 5)
         self.masks['g'] = merge_mask_with_weights(self.masks['g'], self.weight_maps['g'], min_weight=0.5)
 
@@ -556,12 +544,12 @@ def plot_mean_tau(autocorr_time_arr):
     plt.show()
 
 
-def run_experiments(config, params_to_update, data_ready=True, maps_ready=True):
+def run_experiments(config, params_to_update, recalculate_data=False, recalculate_maps=False, with_covariance=True):
     # Create base experiment to prepare data which is common for all experiments
     experiment_base = Experiment(config)
-    if data_ready:
+    if not recalculate_data:
         experiment_base.set_data()
-    if maps_ready:
+    if not recalculate_maps:
         experiment_base.set_maps()
 
     # TODO: many params simultaneously
@@ -577,12 +565,12 @@ def run_experiments(config, params_to_update, data_ready=True, maps_ready=True):
             setattr(experiments[label], param_name, param_val)
 
             # Set data if not done previously
-            if not data_ready:
+            if recalculate_data:
                 experiments[label].set_data()
-            if not maps_ready:
+            if recalculate_maps:
                 experiments[label].set_maps()
 
             # Set correlations, necessary for every experiment
-            experiments[label].set_correlations()
+            experiments[label].set_correlations(with_covariance=with_covariance)
 
     return experiments
