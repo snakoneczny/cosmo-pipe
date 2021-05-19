@@ -40,7 +40,7 @@ class Experiment:
 
         # Correlation parameters
         self.correlation_symbols = []
-        self.l_max = {}
+        self.l_range = {}
         self.ells_per_bin = {}
         self.cosmology_name = None
         self.cosmology_matter_power_spectrum = None
@@ -77,6 +77,7 @@ class Experiment:
         self.covariance_matrices = {}
         self.correlation_matrices = {}
         self.l_arr = None
+        self.bin_range = {}
         self.n_ells = {}
 
         # MCMC containers
@@ -101,6 +102,7 @@ class Experiment:
             setattr(self, key, value)
 
         # Generate necessary correlation symbols
+        self.correlation_symbols = list(self.ells_per_bin.keys())
         self.map_symbols = list(set(''.join(self.correlation_symbols)))
         self.all_correlation_symbols = get_pairs(self.map_symbols)
 
@@ -236,15 +238,6 @@ class Experiment:
     def set_correlations(self, with_covariance=True):
         assert self.are_maps_ready
 
-        get_redshift_distribution_functions = {
-            'LoTSS_DR2': partial(get_lotss_redshift_distribution, z_tail=self.z_tail),
-            'LoTSS_DR1': partial(get_lotss_redshift_distribution, z_tail=self.z_tail),
-            'NVSS': get_nvss_redshift_distribution,
-            # TODO: should include mask (?)
-            'KiDS_QSO': partial(get_redshift_distribution, self.data.get('g'), n_bins=50, z_col='Z_PHOTO_QSO')
-        }
-        self.z_arr, self.n_arr = get_redshift_distribution_functions[self.lss_survey_name]()
-
         self.set_binning()
         self.set_data_correlations()
         self.set_theory_correlations()
@@ -261,12 +254,13 @@ class Experiment:
 
     def set_sigmas(self):
         for corr_symbol in self.data_correlations:
-            data = self.data_correlations[corr_symbol][:self.n_ells[corr_symbol]]
+            bin_range = self.bin_range[corr_symbol]
+            data = self.data_correlations[corr_symbol][bin_range[0]:bin_range[1]]
             cov_matrix = self.covariance_matrices[corr_symbol + '-' + corr_symbol]
-            cov_matrix = cov_matrix[:self.n_ells[corr_symbol], :self.n_ells[corr_symbol]]
+            cov_matrix = cov_matrix[bin_range[0]:bin_range[1], bin_range[0]:bin_range[1]]
 
             model = self.theory_correlations[corr_symbol]
-            model = decouple_correlation(self.workspaces[corr_symbol], model)[:self.n_ells[corr_symbol]]
+            model = decouple_correlation(self.workspaces[corr_symbol], model)[bin_range[0]:bin_range[1]]
             self.chi_squared[corr_symbol] = get_chi_squared(data, model, cov_matrix)
 
             zero_chi_squared = get_chi_squared(data, 0, cov_matrix)
@@ -279,18 +273,25 @@ class Experiment:
 
         a_start = 0
         for i, corr_symbol_a in enumerate(self.correlation_symbols):
+            bin_range_a = self.bin_range[corr_symbol_a]
+            n_ells_a = self.n_ells[corr_symbol_a]
 
             b_start = 0
             for j, corr_symbol_b in enumerate(self.correlation_symbols):
-                a_end = a_start + self.n_ells[corr_symbol_a]
-                b_end = b_start + self.n_ells[corr_symbol_b]
-                # TODO: make sure the order is right, fix last indexing
-                self.inference_covariance[a_start: a_end, b_start: b_end] = \
-                    self.covariance_matrices[
-                        corr_symbol_b + '-' + corr_symbol_a][:self.n_ells[corr_symbol_a], :self.n_ells[corr_symbol_b]]
+                bin_range_b = self.bin_range[corr_symbol_b]
+                n_ells_b = self.n_ells[corr_symbol_b]
 
-                b_start += self.n_ells[corr_symbol_b]
-            a_start += self.n_ells[corr_symbol_a]
+                a_end = a_start + n_ells_a
+                b_end = b_start + n_ells_b
+
+                # TODO: make sure the order is right, fix last indexing
+                self.inference_covariance[a_start: a_end, b_start: b_end] = self.covariance_matrices[
+                                                                                corr_symbol_b + '-' + corr_symbol_a][
+                                                                            bin_range_a[0]:bin_range_a[1],
+                                                                            bin_range_b[0]:bin_range_b[1]]
+
+                b_start += n_ells_b
+            a_start += n_ells_a
 
         self.inference_correlation = get_correlation_matrix(self.inference_covariance)
 
@@ -330,8 +331,9 @@ class Experiment:
         for correlation_symbol in self.correlation_symbols:
             # Subtract noise from data because theory spectra are created without noise during the sampling
             noise = self.noise_decoupled[correlation_symbol]
-            noise = noise[:self.n_ells[correlation_symbol]] if isinstance(noise, np.ndarray) else noise
-            data_vectors.append(self.data_correlations[correlation_symbol][:self.n_ells[correlation_symbol]] - noise)
+            bin_range = self.bin_range[correlation_symbol]
+            noise = noise[bin_range[0]:bin_range[1]] if isinstance(noise, np.ndarray) else noise
+            data_vectors.append(self.data_correlations[correlation_symbol][bin_range[0]:bin_range[1]] - noise)
         self.data_vector = np.concatenate(data_vectors)
 
     def set_data_correlations(self):
@@ -360,19 +362,31 @@ class Experiment:
                         self.workspaces[correlation_symbol], self.noise_curves[correlation_symbol])
 
         # Scale auto-correlations for LoTSS DR2 non-optical data
-        if self.lss_survey_name == 'LoTSS_DR2' and not self.is_optical:
-            # if not self.is_optical:
-            corr_optical = read_correlations(
-                'LoTSS_DR1_optical_nside={}_gg-gk_bin={}'.format(self.nside, self.ells_per_bin['gg']))
-            corr_srl = read_correlations(
-                'LoTSS_DR1_srl_nside={}_gg-gk_bin={}'.format(self.nside, self.ells_per_bin['gg']))
-            ratio = (corr_optical['Cl_gg'] - corr_optical['nl_gg']) / (corr_srl['Cl_gg'] - corr_srl['nl_gg'])
-            self.raw_data_correlations['gg'] = self.data_correlations['gg'].copy()
-            self.data_correlations['gg'] -= self.noise_curves['gg']
-            self.data_correlations['gg'] *= ratio
-            self.data_correlations['gg'] += self.noise_curves['gg']
+        # TODO: ells per bin = 50 (?)
+        if self.lss_survey_name == 'LoTSS_DR2' and not self.is_optical and self.ells_per_bin['gg'] == 50:
+            # TODO: use get correlations filename function
+            fname_template = 'LoTSS_DR1_{}_{}mJy_nside={}_gg-gk_bin={}'
+            fname_optical = fname_template.format('optical', self.flux_min_cut, self.nside, self.ells_per_bin['gg'])
+            fname_srl = fname_template.format('srl', self.flux_min_cut, self.nside, self.ells_per_bin['gg'])
+            corr_optical = read_correlations(fname_optical)
+            corr_srl = read_correlations(fname_srl)
+            if corr_optical is not None and corr_srl is not None:
+                ratio = (corr_optical['Cl_gg'] - corr_optical['nl_gg']) / (corr_srl['Cl_gg'] - corr_srl['nl_gg'])
+                self.raw_data_correlations['gg'] = self.data_correlations['gg'].copy()
+                self.data_correlations['gg'] -= self.noise_curves['gg']
+                self.data_correlations['gg'] *= ratio
+                self.data_correlations['gg'] += self.noise_curves['gg']
 
     def set_theory_correlations(self):
+        get_redshift_distribution_functions = {
+            'LoTSS_DR2': partial(get_lotss_redshift_distribution, z_tail=self.z_tail),
+            'LoTSS_DR1': partial(get_lotss_redshift_distribution, z_tail=self.z_tail),
+            'NVSS': get_nvss_redshift_distribution,
+            # TODO: should include mask (?)
+            'KiDS_QSO': partial(get_redshift_distribution, self.data.get('g'), n_bins=50, z_col='Z_PHOTO_QSO')
+        }
+        self.z_arr, self.n_arr = get_redshift_distribution_functions[self.lss_survey_name]()
+
         # Get cosmology parameters
         with open(os.path.join(PROJECT_PATH, 'cosmologies.yml'), 'r') as cosmology_file:
             self.cosmology_params = yaml.full_load(cosmology_file)[self.cosmology_name]
@@ -391,6 +405,7 @@ class Experiment:
             't': ISWTracer(cosmology, z_max=6., n_chi=1024),
         }
 
+        # TODO: make possible to rerun this function, save symbols for manually set correlations
         for correlation_symbol in self.all_correlation_symbols:
             # Pass if theory correlation was set earlier with maps
             if correlation_symbol not in self.theory_correlations:
@@ -408,10 +423,18 @@ class Experiment:
             ells_per_bin = self.ells_per_bin[correlation_symbol]
             self.binnings[correlation_symbol] = nmt.NmtBin.from_nside_linear(self.nside, ells_per_bin)
 
-            # Save number of ells to use in inference, sigma calculation, covariance matrices, etc.
-            l_max = self.l_max[correlation_symbol]
+            # Save bin range to use in inference, sigma calculation, covariance matrices, etc.
+            l_min = self.l_range[correlation_symbol][0]
+            l_max = self.l_range[correlation_symbol][1]
+
+            l_min = 2 if not l_min else l_min
             l_max = 3 * self.nside if not l_max else l_max
-            self.n_ells[correlation_symbol] = int((l_max - 2) / ells_per_bin)
+
+            bin_min = int((l_min - 2) / ells_per_bin)
+            bin_max = int((l_max - 2) / ells_per_bin)
+
+            self.bin_range[correlation_symbol] = (bin_min, bin_max)
+            self.n_ells[correlation_symbol] = bin_max - bin_min
 
         # Create dense array of ells, for theoretical power spectra
         self.l_arr = np.arange(3 * self.nside)

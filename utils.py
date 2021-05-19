@@ -232,6 +232,7 @@ def read_correlations(filename):
 
 def get_correlations_filename(experiment):
     optical_name = 'optical' if experiment.is_optical else 'srl'
-    experiment_name = '{}_{}_nside={}_gg-gk_bin={}'.format(experiment.lss_survey_name, optical_name, experiment.nside,
-                                                           experiment.ells_per_bin['gg'])
+    experiment_name = '{}_{}_{}mJy_nside={}_gg-gk_bin={}'.format(experiment.lss_survey_name, optical_name,
+                                                                 experiment.flux_min_cut, experiment.nside,
+                                                                 experiment.ells_per_bin['gg'])
     return experiment_name

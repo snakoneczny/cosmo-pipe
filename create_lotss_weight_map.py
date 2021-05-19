@@ -6,8 +6,8 @@ from env_config import DATA_PATH
 from data_lotss import get_lotss_data, get_lotss_map, get_lotss_noise_weight_map
 
 # Weight map parameters
-data_release = 2
-flux_min_cut = 2
+data_release = 1
+flux_min_cut = 0.5
 signal_to_noise = 5
 
 # Output filepath

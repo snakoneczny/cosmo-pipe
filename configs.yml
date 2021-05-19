@@ -4,20 +4,19 @@ LoTSS_DR2:
   lss_survey_name: LoTSS_DR2
   is_optical: False
   lss_mask_name: Mask_coverage
-  flux_min_cut: 2
+  flux_min_cut: 0.5
   nside: 512
-  z_tail: 1.3
-  bias: 1.4
+  z_tail: 1.1
+  bias: 1.1
   scale_bias: True
 
   cosmology_name: planck
   cosmology_matter_power_spectrum: halofit
-  correlation_symbols: [gg, gt]
-  l_max: {
-#    gg: 510,
-#    gk: 510,
-    gg: 36,
-    gt: 36,
+  l_range: {
+#    gg: [52, 802],
+#    gk: [52, 802],
+    gg: [2, 34],
+    gt: [2, 34],
   }
   ells_per_bin: {
 #    gg: 50,
@@ -34,8 +33,8 @@ LoTSS_DR2:
 
 LoTSS_DR1:
   lss_survey_name: LoTSS_DR1
-  is_optical: False
-  flux_min_cut: 2
+  is_optical: True
+  flux_min_cut: 1
   nside: 512
   z_tail: 2.0
   bias: 2.1
