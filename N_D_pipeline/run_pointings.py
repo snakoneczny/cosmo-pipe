@@ -1,4 +1,4 @@
-from utils import Pointings
+from lotss_corr import Pointings
 import os
 
 

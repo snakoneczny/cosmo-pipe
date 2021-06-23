@@ -1,0 +1,34 @@
+bandpowers:
+  lsplit: 52
+  nb_log: 28
+  nlb: 20
+  nlb_lin: 10
+  type: linlog
+compute:
+- gg
+- gk
+- kk
+kappa:
+  fname_map: /mnt/extraspace/damonge/LensLotss/MV/kmap_rotated.fits
+  fname_mask: /mnt/extraspace/damonge/LensLotss/MV/mask_rot_apo0.200_C1.fits.gz
+  fname_noise: /mnt/extraspace/damonge/LensLotss/MV/nlkk.dat
+lotss:
+  I_thr: 2.0
+  fname_catalog: /mnt/extraspace/damonge/LensLotss/DR2_data/LoTSS_DR2_v100.srl.fits
+  fname_rms: /mnt/extraspace/damonge/LensLotss/DR2_data/maps_all.fits.gz
+  mask_from_catalog: true
+  mask_threshold: 0.0
+  q_thr: 5.0
+toeplitz:
+  cls:
+    l_toeplitz: -1
+    l_exact: -1
+    dl_band: -1
+  cov:
+    l_toeplitz: 1375
+    l_exact: 500
+    dl_band: 500
+
+n_iter: 0
+nside: 2048
+output_dir: /mnt/extraspace/damonge/LensLotss/DR2_data/cls_Icut2p0_SN5p0_pcat
