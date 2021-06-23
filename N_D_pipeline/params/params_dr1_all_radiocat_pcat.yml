@@ -1,3 +1,8 @@
+treecorr:
+  bins: 30
+  min_sep: 0.01
+  max_sep: 10.0
+  sep_units: deg
 bandpowers:
   lsplit: 52
   nb_log: 28
