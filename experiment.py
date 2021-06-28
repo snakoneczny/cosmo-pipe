@@ -362,8 +362,7 @@ class Experiment:
                         self.workspaces[correlation_symbol], self.noise_curves[correlation_symbol])
 
         # Scale auto-correlations for LoTSS DR2 non-optical data
-        # TODO: ells per bin = 50 (?)
-        if self.lss_survey_name == 'LoTSS_DR2' and not self.is_optical and self.ells_per_bin['gg'] == 50:
+        if self.lss_survey_name == 'LoTSS_DR2' and not self.is_optical:
             # TODO: use get correlations filename function
             fname_template = 'LoTSS_DR1_{}_{}mJy_nside={}_gg-gk_bin={}'
             fname_optical = fname_template.format('optical', self.flux_min_cut, self.nside, self.ells_per_bin['gg'])

@@ -23,7 +23,7 @@ def get_lotss_redshift_distribution(z_tail, z_max=6):
 
 
 def read_lotss_noise_weight_map(nside, data_release, flux_min_cut, signal_to_noise):
-    file_path = os.path.join(DATA_PATH, 'LoTSS/DR{}/weight_map__mean_minflux-{}_snr-{}.fits'.format(
+    file_path = os.path.join(DATA_PATH, 'LoTSS/DR{}/weight_map__pointing-mean_minflux-{}_snr-{}.fits'.format(
         data_release, flux_min_cut, signal_to_noise))
     weight_map = hp.read_map(file_path)
     weight_map = hp.ud_grade(weight_map, nside)

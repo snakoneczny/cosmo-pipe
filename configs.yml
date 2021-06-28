@@ -34,7 +34,7 @@ LoTSS_DR2:
 LoTSS_DR1:
   lss_survey_name: LoTSS_DR1
   is_optical: True
-  flux_min_cut: 1
+  flux_min_cut: 2
   nside: 512
   z_tail: 2.0
   bias: 2.1
@@ -42,10 +42,9 @@ LoTSS_DR1:
 
   cosmology_name: planck
   cosmology_matter_power_spectrum: halofit
-  correlation_symbols: [gg, gk]
-  l_max: {
-    gg: null,
-    gk: null,
+  l_range: {
+    gg: [2, 502],
+    gk: [2, 502],
   }
   ells_per_bin: {
     gg: 50,
