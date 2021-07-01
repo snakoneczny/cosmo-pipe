@@ -23,7 +23,7 @@ def get_lotss_redshift_distribution(z_tail, z_max=6):
 
 
 def read_lotss_noise_weight_map(nside, data_release, flux_min_cut, signal_to_noise):
-    file_path = os.path.join(DATA_PATH, 'LoTSS/DR{}/weight_map__pointing-mean_minflux-{}_snr-{}.fits'.format(
+    file_path = os.path.join(DATA_PATH, 'LoTSS/DR{}/weight_maps/weight_map__pointing-mean_minflux-{}_snr-{}.fits'.format(
         data_release, flux_min_cut, signal_to_noise))
     weight_map = hp.read_map(file_path)
     weight_map = hp.ud_grade(weight_map, nside)
@@ -167,7 +167,7 @@ def get_lotss_dr1_mask(nside):
     return mask
 
 
-def get_lotss_data(data_release, flux_min_cut=2, optical=True):
+def get_lotss_data(data_release, flux_min_cut=2, signal_to_noise=None, optical=True):
     if data_release == 1:
         filename = 'LOFAR_HBA_T1_DR1_merge_ID_optical_f_v1.2b_restframe.fits' if optical else \
             'LOFAR_HBA_T1_DR1_catalog_v1.0.srl.fits'
@@ -182,5 +182,10 @@ def get_lotss_data(data_release, flux_min_cut=2, optical=True):
     if flux_min_cut:
         data = data.loc[data['Total_flux'] > flux_min_cut]
         print('Total flux of S > {} mJy: {}'.format(flux_min_cut, data.shape))
+
+    # Signal to noise ratio cut
+    if signal_to_noise:
+        data = data.loc[data['Total_flux'] / data['E_Total_flux'] > signal_to_noise]
+        print('Signal to noise > {}: {}'.format(signal_to_noise, data.shape))
 
     return data

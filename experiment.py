@@ -32,6 +32,7 @@ class Experiment:
         self.lss_survey_name = None
         self.is_optical = True
         self.lss_mask_name = None
+        self.signal_to_noise = None
         self.flux_min_cut = 0
         self.nside = 0
         self.z_tail = 0
@@ -362,11 +363,14 @@ class Experiment:
                         self.workspaces[correlation_symbol], self.noise_curves[correlation_symbol])
 
         # Scale auto-correlations for LoTSS DR2 non-optical data
-        if self.lss_survey_name == 'LoTSS_DR2' and not self.is_optical:
+        # TODO: what about scaling gg in case of gt? is it needed? probably not
+        if self.lss_survey_name == 'LoTSS_DR2' and not self.is_optical and 'gt' not in self.correlation_symbols:
             # TODO: use get correlations filename function
-            fname_template = 'LoTSS_DR1_{}_{}mJy_nside={}_gg-gk_bin={}'
-            fname_optical = fname_template.format('optical', self.flux_min_cut, self.nside, self.ells_per_bin['gg'])
-            fname_srl = fname_template.format('srl', self.flux_min_cut, self.nside, self.ells_per_bin['gg'])
+            fname_template = 'LoTSS_DR1/LoTSS_DR1_{}_{}mJy_snr={}_nside={}_gg-gk_bin={}'
+            fname_optical = fname_template.format('optical', self.flux_min_cut, self.signal_to_noise, self.nside,
+                                                  self.ells_per_bin['gg'])
+            fname_srl = fname_template.format('srl', self.flux_min_cut, self.signal_to_noise, self.nside,
+                                              self.ells_per_bin['gg'])
             corr_optical = read_correlations(fname_optical)
             corr_srl = read_correlations(fname_srl)
             if corr_optical is not None and corr_srl is not None:
@@ -479,9 +483,11 @@ class Experiment:
 
     def set_data(self):
         if self.lss_survey_name == 'LoTSS_DR2':
-            self.data['g'] = get_lotss_data(data_release=2, flux_min_cut=self.flux_min_cut, optical=self.is_optical)
+            self.data['g'] = get_lotss_data(data_release=2, flux_min_cut=self.flux_min_cut,
+                                            signal_to_noise=self.signal_to_noise, optical=self.is_optical)
         elif self.lss_survey_name == 'LoTSS_DR1':
-            self.data['g'] = get_lotss_data(data_release=1, flux_min_cut=self.flux_min_cut, optical=self.is_optical)
+            self.data['g'] = get_lotss_data(data_release=1, flux_min_cut=self.flux_min_cut,
+                                            signal_to_noise=self.signal_to_noise, optical=self.is_optical)
         elif self.lss_survey_name == 'KiDS_QSO':
             self.data['g'] = get_kids_qsos()
 

@@ -206,8 +206,8 @@ def read_fits_to_pandas(filepath, columns=None, n=None):
     return table
 
 
-def get_config(config_name):
-    with open('../configs.yml', 'r') as config_file:
+def get_config(config_name, configs_file='../configs.yml'):
+    with open(configs_file, 'r') as config_file:
         config = yaml.full_load(config_file)
     config = config[config_name]
     return config
@@ -216,7 +216,8 @@ def get_config(config_name):
 # TODO: save covariance/errors (?)
 def save_correlations(experiment):
     experiment_name = get_correlations_filename(experiment)
-    file_path = os.path.join(PROJECT_PATH, 'outputs/correlations/{}.csv'.format(experiment_name))
+    file_path = os.path.join(PROJECT_PATH,
+                             'outputs/correlations/{}/{}.csv'.format(experiment.lss_survey_name, experiment_name))
     df = pd.DataFrame()
     for correlation_symbol in experiment.correlation_symbols:
         df['l'] = experiment.binnings[correlation_symbol].get_effective_ells()
@@ -232,7 +233,8 @@ def read_correlations(filename):
 
 def get_correlations_filename(experiment):
     optical_name = 'optical' if experiment.is_optical else 'srl'
-    experiment_name = '{}_{}_{}mJy_nside={}_gg-gk_bin={}'.format(experiment.lss_survey_name, optical_name,
-                                                                 experiment.flux_min_cut, experiment.nside,
-                                                                 experiment.ells_per_bin['gg'])
+    experiment_name = '{}_{}_{}mJy_snr={}_nside={}_gg-gk_bin={}'.format(
+        experiment.lss_survey_name, optical_name, experiment.flux_min_cut, experiment.signal_to_noise, experiment.nside,
+        experiment.ells_per_bin['gg']
+    )
     return experiment_name

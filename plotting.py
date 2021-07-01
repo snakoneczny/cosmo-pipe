@@ -52,8 +52,13 @@ def plot_correlation(experiment, correlation_symbol, x_min=0, x_max=None, y_min=
         correlation_dict = experiment.raw_data_correlations if is_raw else experiment.data_correlations
         data_to_plot = correlation_dict[correlation_symbol] - noise
         plt.errorbar(ell_arr, data_to_plot, yerr=y_err, fmt='ob', label='data', markersize=2)
+        # Shot noise
         if correlation_symbol == 'gg':
             plt.plot(ell_arr, noise, color='grey', marker='o', label='noise', markersize=2)
+        # ell range lines
+        l_range = experiment.l_range[correlation_symbol]
+        plt.axvline(l_range[0], label='ell range', color='green')
+        plt.axvline(l_range[1], color='green')
 
     # Theory
     if correlation_symbol in experiment.theory_correlations:
