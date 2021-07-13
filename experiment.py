@@ -414,7 +414,6 @@ class Experiment:
             if correlation_symbol not in self.theory_correlations:
                 tracer_symbol_a = correlation_symbol[0]
                 tracer_symbol_b = correlation_symbol[1]
-                correlation_symbol = tracer_symbol_a + tracer_symbol_b
                 self.theory_correlations[correlation_symbol] = ccl.angular_cl(cosmology, tracers_dict[tracer_symbol_a],
                                                                               tracers_dict[tracer_symbol_b], self.l_arr)
 
@@ -424,17 +423,31 @@ class Experiment:
     def set_binning(self):
         for correlation_symbol in self.correlation_symbols:
             ells_per_bin = self.ells_per_bin[correlation_symbol]
-            self.binnings[correlation_symbol] = nmt.NmtBin.from_nside_linear(self.nside, ells_per_bin)
 
-            # Save bin range to use in inference, sigma calculation, covariance matrices, etc.
             l_min = self.l_range[correlation_symbol][0]
             l_max = self.l_range[correlation_symbol][1]
 
             l_min = 2 if not l_min else l_min
             l_max = 3 * self.nside if not l_max else l_max
 
-            bin_min = int((l_min - 2) / ells_per_bin)
-            bin_max = int((l_max - 2) / ells_per_bin)
+            # Create binning based on varying bin size
+            if isinstance(ells_per_bin, list):
+                ell_start_arr = np.array([sum(ells_per_bin[:i]) for i in range(len(ells_per_bin))])
+                ell_end_arr = np.array([sum(ells_per_bin[:i+1]) for i in range(len(ells_per_bin))])
+                ell_start_arr += 2
+                ell_end_arr += 2
+                self.binnings[correlation_symbol] = nmt.NmtBin.from_edges(ell_start_arr, ell_end_arr)
+
+                assert (l_max <= ell_end_arr[-1])
+                bin_min = sum(ell_start_arr < l_min)
+                bin_max = sum(ell_end_arr <= l_max) - 1
+
+            # Create linear binning with constant bin size
+            else:
+                self.binnings[correlation_symbol] = nmt.NmtBin.from_nside_linear(self.nside, ells_per_bin)
+
+                bin_min = int((l_min - 2) / ells_per_bin)
+                bin_max = int((l_max - 2) / ells_per_bin)
 
             self.bin_range[correlation_symbol] = (bin_min, bin_max)
             self.n_ells[correlation_symbol] = bin_max - bin_min
@@ -474,6 +487,9 @@ class Experiment:
         # Probability mask
         self.weight_maps['g'] = read_lotss_noise_weight_map(self.nside, data_release, self.flux_min_cut, 5)
         self.masks['g'] = merge_mask_with_weights(self.masks['g'], self.weight_maps['g'], min_weight=0.5)
+
+        # TODO: delete
+        # self.masks['g'][self.base_maps['g'] == 0] = 0
 
     def set_nvss_maps(self):
         self.base_maps['g'], self.masks['g'] = get_nvss_map(nside=self.nside)

@@ -213,7 +213,6 @@ def get_config(config_name, configs_file='../configs.yml'):
     return config
 
 
-# TODO: save covariance/errors (?)
 def save_correlations(experiment):
     experiment_name = get_correlations_filename(experiment)
     file_path = os.path.join(PROJECT_PATH,
@@ -223,7 +222,10 @@ def save_correlations(experiment):
         df['l'] = experiment.binnings[correlation_symbol].get_effective_ells()
         df['Cl_{}'.format(correlation_symbol)] = experiment.data_correlations[correlation_symbol]
         df['nl_{}'.format(correlation_symbol)] = experiment.noise_curves[correlation_symbol]
+        covariance_symbol = '{c}-{c}'.format(c=correlation_symbol)
+        df['err_{}'.format(correlation_symbol)] = np.sqrt(np.diag(experiment.covariance_matrices[covariance_symbol]))
     df.to_csv(file_path, index=False)
+    print('Correlations saved to: {}'.format(file_path))
 
 
 def read_correlations(filename):
