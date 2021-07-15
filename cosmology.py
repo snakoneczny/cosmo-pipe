@@ -9,7 +9,7 @@ from utils import struct, ISWTracer
 from data_lotss import get_lotss_redshift_distribution
 
 
-def get_theory_correlations(config, correlation_symbols, l_arr):
+def get_theory_correlations(config, correlation_symbols, l_arr, omega_param=None):
     config = struct(**config)
 
     z_arr, n_arr = get_lotss_redshift_distribution(z_tail=config.z_tail)
@@ -17,6 +17,14 @@ def get_theory_correlations(config, correlation_symbols, l_arr):
     with open(os.path.join(PROJECT_PATH, 'cosmologies.yml'), 'r') as cosmology_file:
         cosmology_params = yaml.full_load(cosmology_file)[config.cosmology_name]
     cosmology_params['matter_power_spectrum'] = config.cosmology_matter_power_spectrum
+
+    if omega_param:
+        if omega_param[0] == 'Omega_c_b_frac':
+            cosmology_params['Omega_c'] *= omega_param[1]
+            cosmology_params['Omega_b'] *= omega_param[1]
+        elif omega_param[0] == 'Omega_k':
+            cosmology_params['Omega_k'] = omega_param[1]
+
     cosmology = ccl.Cosmology(**cosmology_params)
 
     bias_arr = config.bias * np.ones(len(z_arr))

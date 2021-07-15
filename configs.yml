@@ -14,16 +14,16 @@ LoTSS_DR2:
   cosmology_name: planck
   cosmology_matter_power_spectrum: halofit
   l_range: {
-    gg: [52, 802],
-    gk: [52, 802],
-#    gg: [4, 120],
-#    gt: [4, 120],
+#    gg: [52, 802],
+#    gk: [52, 802],
+    gg: [2, 120],
+    gt: [2, 120],
   }
   ells_per_bin: {
-    gg: 50,
-    gk: 50,
-#    gg: 16,
-#    gt: 16,
+#    gg: 50,
+#    gk: 50,
+    gg: [16, 16, 16, 16, 16, 16, 16, 16, 16, 16],
+    gt: [16, 16, 16, 16, 16, 16, 16, 16, 16, 16],
   }
 
   starting_params: {bias: [2.1, 0.5], sigma8: [0.83, 0.1]}
