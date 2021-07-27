@@ -189,4 +189,11 @@ def get_lotss_data(data_release, flux_min_cut=2, signal_to_noise=None, optical=T
         data = data.loc[data['Total_flux'] / data['E_Total_flux'] > signal_to_noise]
         print('Signal to noise > {}: {}'.format(signal_to_noise, data.shape))
 
+    # TODO: delete or permanently add to code
+    # Patches
+    # data = data.loc[(data['RA'] > 100) & (data['RA'] < 300)]
+    # print('Big patch: {}'.format(data.shape))
+    # data = data.loc[(data['RA'] < 100) | (data['RA'] > 300)]
+    # print('Small patch: {}'.format(data.shape))
+
     return data

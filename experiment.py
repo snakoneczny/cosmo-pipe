@@ -433,7 +433,7 @@ class Experiment:
             # Create binning based on varying bin size
             if isinstance(ells_per_bin, list):
                 ell_start_arr = np.array([sum(ells_per_bin[:i]) for i in range(len(ells_per_bin))])
-                ell_end_arr = np.array([sum(ells_per_bin[:i+1]) for i in range(len(ells_per_bin))])
+                ell_end_arr = np.array([sum(ells_per_bin[:i + 1]) for i in range(len(ells_per_bin))])
                 ell_start_arr += 2
                 ell_end_arr += 2
                 self.binnings[correlation_symbol] = nmt.NmtBin.from_edges(ell_start_arr, ell_end_arr)
@@ -484,12 +484,18 @@ class Experiment:
     def set_lotss_maps(self, data_release=2):
         self.base_maps['g'], self.masks['g'], self.noise_maps['g'] = get_lotss_map(
             self.data['g'], data_release=data_release, mask_filename=self.lss_mask_name, nside=self.nside)
+
+        # TODO: delete or permanently add to code / maps
+        # import healpy as hp
+        # for i in range(len(self.masks['g'])):
+        #     lon, lat = hp.pixelfunc.pix2ang(nside=512, ipix=i, nest=False, lonlat=True)
+        #     # if lon < 100 or lon > 300:
+        #     if 100 < lon < 300:
+        #         self.masks['g'][i] = 0
+
         # Probability mask
         self.weight_maps['g'] = read_lotss_noise_weight_map(self.nside, data_release, self.flux_min_cut, 5)
         self.masks['g'] = merge_mask_with_weights(self.masks['g'], self.weight_maps['g'], min_weight=0.5)
-
-        # TODO: delete
-        # self.masks['g'][self.base_maps['g'] == 0] = 0
 
     def set_nvss_maps(self):
         self.base_maps['g'], self.masks['g'] = get_nvss_map(nside=self.nside)
