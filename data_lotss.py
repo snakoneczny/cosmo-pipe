@@ -10,21 +10,28 @@ from env_config import DATA_PATH
 from utils import get_map, get_masked_map, get_aggregated_map, read_fits_to_pandas
 
 
-def get_lotss_redshift_distribution(z_tail, z_max=6):
-    z_0 = 0.1
-    gamma = 3.5
-
+def get_lotss_redshift_distribution(z_tail=None, z_sfg=None, z_agn=None, r=None, n=None, new_z_dist=True, z_max=6):
     z_step = 0.01
     z_min = 0
     z_max = z_max + z_step
     z_arr = np.arange(z_min, z_max, z_step)
-    n_arr = ((z_arr / z_0) ** 2) / (1 + (z_arr / z_0) ** 2) / (1 + (z_arr / z_tail) ** gamma)
+
+    if new_z_dist:
+        n_arr = (z_arr ** 2) / (1 + z_arr) * (np.exp((-z_arr / z_sfg)) + r * np.exp(-z_arr / z_agn))
+        if n:
+            n_arr *= n
+    else:
+        z_0 = 0.1
+        gamma = 3.5
+        n_arr = ((z_arr / z_0) ** 2) / (1 + (z_arr / z_0) ** 2) / (1 + (z_arr / z_tail) ** gamma)
+
     return z_arr, n_arr
 
 
 def read_lotss_noise_weight_map(nside, data_release, flux_min_cut, signal_to_noise):
-    file_path = os.path.join(DATA_PATH, 'LoTSS/DR{}/weight_maps/weight_map__pointing-mean_minflux-{}_snr-{}.fits'.format(
-        data_release, flux_min_cut, signal_to_noise))
+    file_path = os.path.join(DATA_PATH,
+                             'LoTSS/DR{}/weight_maps/weight_map__pointing-mean_minflux-{}_snr-{}.fits'.format(
+                                 data_release, flux_min_cut, signal_to_noise))
     weight_map = hp.read_map(file_path)
     weight_map = hp.ud_grade(weight_map, nside)
     return weight_map

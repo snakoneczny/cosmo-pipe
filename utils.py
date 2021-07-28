@@ -210,6 +210,12 @@ def get_config(config_name, configs_file='../configs.yml'):
     with open(configs_file, 'r') as config_file:
         config = yaml.full_load(config_file)
     config = config[config_name]
+
+    # Dictionary fields, flatten to proper values
+    for key in ['z_tail', 'z_sfg', 'z_agn', 'r', 'bias']:
+        if key in config:
+            config[key] = config[key][config['flux_min_cut']]
+
     return config
 
 
