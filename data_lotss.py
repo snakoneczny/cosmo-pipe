@@ -4,26 +4,45 @@ import os
 import healpy as hp
 import numpy as np
 from scipy.special import erf
+from scipy.integrate import simps
 from tqdm import tqdm
 
 from env_config import DATA_PATH
 from utils import get_map, get_masked_map, get_aggregated_map, read_fits_to_pandas
 
 
-def get_lotss_redshift_distribution(z_tail=None, z_sfg=None, z_agn=None, r=None, n=None, new_z_dist=True, z_max=6):
-    z_step = 0.01
-    z_min = 0
-    z_max = z_max + z_step
-    z_arr = np.arange(z_min, z_max, z_step)
+def get_lotss_redshift_distribution(z_tail=None, z_sfg=None, a=None, r=None, n=None, flux_cut=None, model='power_law',
+                                    z_max=6):
+    if model == 'deep_fields':
+        deepfields_file = 'LoTSS/DR2/pz_deepfields/Pz_booterrors_wsum_deepfields_{}mJy.fits'.format(
+            ''.join(str(flux_cut).split('.')))
+        pz_deepfields = read_fits_to_pandas(os.path.join(DATA_PATH, deepfields_file))
+        z_arr = pz_deepfields['zbins']
+        n_arr = pz_deepfields['pz']
 
-    if new_z_dist:
-        n_arr = (z_arr ** 2) / (1 + z_arr) * (np.exp((-z_arr / z_sfg)) + r * np.exp(-z_arr / z_agn))
-        if n:
-            n_arr *= n
+        from scipy.signal import savgol_filter
+        n_arr = savgol_filter(n_arr, 41, 6)  # window size, polynomial order
+
     else:
-        z_0 = 0.1
-        gamma = 3.5
-        n_arr = ((z_arr / z_0) ** 2) / (1 + (z_arr / z_0) ** 2) / (1 + (z_arr / z_tail) ** gamma)
+        z_step = 0.01
+        z_min = 0
+        z_max = z_max + z_step
+        z_arr = np.arange(z_min, z_max, z_step)
+
+        if model == 'power_law':
+            # n_arr = (z_arr ** 2) / (1 + z_arr) * (np.exp((-z_arr / z_sfg)) + r * np.exp(-z_arr / z_agn))
+            n_arr = (z_arr ** 2) / (1 + z_arr) * (np.exp((-z_arr / z_sfg)) + r ** 2 / (1 + z_arr) ** a)
+            if n:
+                n_arr *= n
+        elif model == 'z_tail':
+            z_0 = 0.1
+            gamma = 3.5
+            n_arr = ((z_arr / z_0) ** 2) / (1 + (z_arr / z_0) ** 2) / (1 + (z_arr / z_tail) ** gamma)
+        else:
+            raise Exception('Not known redshift distribution model: {}'.format(model))
+
+        area = simps(n_arr, dx=z_arr[1] - z_arr[0])
+        n_arr /= area
 
     return z_arr, n_arr
 

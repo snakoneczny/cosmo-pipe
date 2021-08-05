@@ -40,10 +40,8 @@ def plot_correlation(experiment, correlation_symbol, x_min=0, x_max=None, y_min=
                      y_scale='linear', title=None, with_error=True, is_raw=False):
     # Data error bars
     y_err = None
-    if with_error:
-        covariance_symbol = '-'.join([correlation_symbol, correlation_symbol])
-        if covariance_symbol in experiment.covariance_matrices:
-            y_err = np.sqrt(np.diag(experiment.covariance_matrices[covariance_symbol]))
+    if with_error and correlation_symbol in experiment.errors:
+        y_err = experiment.errors[correlation_symbol]
 
     # Data
     if correlation_symbol in experiment.data_correlations:

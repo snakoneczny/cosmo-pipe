@@ -212,7 +212,7 @@ def get_config(config_name, configs_file='../configs.yml'):
     config = config[config_name]
 
     # Dictionary fields, flatten to proper values
-    for key in ['z_tail', 'z_sfg', 'z_agn', 'r', 'bias']:
+    for key in ['z_tail', 'z_sfg', 'a', 'r', 'bias']:
         if key in config:
             config[key] = config[key][config['flux_min_cut']]
 
@@ -227,14 +227,20 @@ def save_correlations(experiment):
     for correlation_symbol in experiment.correlation_symbols:
         df['l'] = experiment.binnings[correlation_symbol].get_effective_ells()
         df['Cl_{}'.format(correlation_symbol)] = experiment.data_correlations[correlation_symbol]
-        df['nl_{}'.format(correlation_symbol)] = experiment.noise_curves[correlation_symbol]
+        if correlation_symbol == 'gg' and not experiment.is_optical:
+            df['Cl_{}_raw'.format(correlation_symbol)] = experiment.raw_data_correlations[correlation_symbol]
+        df['nl_{}'.format(correlation_symbol)] = experiment.noise_decoupled[correlation_symbol]
+        df['nl_{}_mean'.format(correlation_symbol)] = experiment.noise_curves[correlation_symbol]
         covariance_symbol = '{c}-{c}'.format(c=correlation_symbol)
-        df['err_{}'.format(correlation_symbol)] = np.sqrt(np.diag(experiment.covariance_matrices[covariance_symbol]))
+        df['error_{}'.format(correlation_symbol)] = np.sqrt(np.diag(experiment.covariance_matrices[covariance_symbol]))
     df.to_csv(file_path, index=False)
     print('Correlations saved to: {}'.format(file_path))
 
 
-def read_correlations(filename):
+def read_correlations(filename=None, experiment=None):
+    if experiment:
+        experiment_name = get_correlations_filename(experiment)
+        filename = '{}/{}'.format(experiment.lss_survey_name, experiment_name)
     file_path = os.path.join(PROJECT_PATH, 'outputs/correlations/{}.csv'.format(filename))
     return pd.read_csv(file_path)
 

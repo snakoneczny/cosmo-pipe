@@ -3,36 +3,37 @@
 
 LoTSS_DR2:
   lss_survey_name: LoTSS_DR2
-  is_optical: True
+  is_optical: False
   lss_mask_name: Mask_coverage
   nside: 512
   flux_min_cut: 1
   signal_to_noise: 3
 
-  new_z_dist: True
+  dn_dz_model: 'deep_fields'  # 'z_tail'
   # Old redshift distribution
-  z_tail: {2: 1.3, 1: 1.1, 0.5: 1.1}
+  z_tail: {2: 1.3, 1: 1.0, 0.5: 1.0}
   # New redshift distribution
-  z_sfg: {2: 0.28, 1: 0.24, 0.5: 0.22}
-  z_agn: {2: 1.5, 1: 1.5, 0.5: 1.5}
-  r: {2: 0.01, 1: 0.007, 0.5: 0.005}
+  z_sfg: {2: 0.13, 1: 0.14, 0.5: 0.15}
+  a: {2: 4.66, 1: 4.60, 0.5: 4.56}
+  r: {2: 0.94, 1: 0.90, 0.5: 0.93}
   # Bias
   scale_bias: True
   bias: {2: 1.4, 1: 1.2, 0.5: 1.1}
-  
+
+  read_data_correlations_flag: True
   cosmology_name: planck
   cosmology_matter_power_spectrum: halofit
   l_range: {
-#    gg: [52, 802],
-#    gk: [52, 802],
-    gg: [2, 120],
-    gt: [2, 120],
+    gg: [52, 802],
+    gk: [52, 802],
+#    gg: [2, 120],
+#    gt: [2, 120],
   }
   ells_per_bin: {
-#    gg: 50,
-#    gk: 50,
-    gg: 16,
-    gt: 16,
+    gg: 50,
+    gk: 50,
+#    gg: 16,
+#    gt: 16,
   }
 
   starting_params: {bias: [2.1, 0.5], sigma8: [0.83, 0.1]}

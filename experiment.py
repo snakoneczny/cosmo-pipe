@@ -30,14 +30,18 @@ class Experiment:
     def __init__(self, config, set_data=False, set_maps=False, set_correlations=False):
         # Data parameters
         self.lss_survey_name = None
-        self.is_optical = True
+        self.is_optical = False
         self.lss_mask_name = None
         self.signal_to_noise = None
         self.flux_min_cut = 0
         self.nside = 0
-        self.z_tail = 0
-        self.bias = 0
         self.scale_bias = None
+        self.bias = 0
+        self.dn_dz_model = None
+        self.z_tail = 0
+        self.z_sfg = 0
+        self.a = 0
+        self.r = 0
 
         # Correlation parameters
         self.correlation_symbols = []
@@ -65,6 +69,7 @@ class Experiment:
         self.noise_decoupled = defaultdict(int)
 
         # Correlation containers
+        self.read_data_correlations_flag = False
         self.z_arr = []
         self.n_arr = []
         self.theory_correlations = {}
@@ -76,6 +81,7 @@ class Experiment:
         self.workspaces = {}
         self.binnings = {}
         self.covariance_matrices = {}
+        self.errors = {}
         self.correlation_matrices = {}
         self.l_arr = None
         self.bin_range = {}
@@ -237,14 +243,19 @@ class Experiment:
             [p0 + p0_scales * np.random.uniform(low=-1, high=1, size=n_dim) for i in range(self.n_walkers)])
 
     def set_correlations(self, with_covariance=True):
-        assert self.are_maps_ready
+        assert self.are_maps_ready or self.read_data_correlations_flag
 
         self.set_binning()
-        self.set_data_correlations()
+        if self.read_data_correlations_flag:
+            self.read_data_correlations()
+        else:
+            self.set_data_correlations()
+
         self.set_theory_correlations()
 
-        if with_covariance:
+        if not self.read_data_correlations_flag and with_covariance:
             self.set_covariance_matrices()
+            self.set_errors()
             self.set_sigmas()
 
             self.set_inference_covariance()
@@ -267,6 +278,11 @@ class Experiment:
             zero_chi_squared = get_chi_squared(data, 0, cov_matrix)
             diff = zero_chi_squared - self.chi_squared[corr_symbol]
             self.sigmas[corr_symbol] = math.sqrt(diff) if diff > 0 else None
+
+    def set_errors(self):
+        for correlation_symbol in self.correlation_symbols:
+            covariance_symbol = '{c}-{c}'.format(c=correlation_symbol)
+            self.errors[correlation_symbol] = np.sqrt(np.diag(self.covariance_matrices[covariance_symbol]))
 
     def set_inference_covariance(self):
         total_length = sum(self.n_ells.values())
@@ -337,6 +353,16 @@ class Experiment:
             data_vectors.append(self.data_correlations[correlation_symbol][bin_range[0]:bin_range[1]] - noise)
         self.data_vector = np.concatenate(data_vectors)
 
+    def read_data_correlations(self):
+        correlations_df = read_correlations(experiment=self)
+        for correlation_symbol in self.correlation_symbols:
+            self.data_correlations[correlation_symbol] = correlations_df['Cl_{}'.format(correlation_symbol)]
+            if 'Cl_{}_raw'.format(correlation_symbol) in correlations_df:
+                self.raw_data_correlations[correlation_symbol] = correlations_df['Cl_{}_raw'.format(correlation_symbol)]
+            self.noise_decoupled[correlation_symbol] = correlations_df['nl_{}'.format(correlation_symbol)]
+            self.noise_curves[correlation_symbol] = correlations_df['nl_{}_mean'.format(correlation_symbol)][0]
+            self.errors[correlation_symbol] = correlations_df['error_{}'.format(correlation_symbol)]
+
     def set_data_correlations(self):
         # Get fields
         for map_symbol in self.map_symbols:
@@ -371,19 +397,23 @@ class Experiment:
                                                   self.ells_per_bin['gg'])
             fname_srl = fname_template.format('srl', self.flux_min_cut, self.signal_to_noise, self.nside,
                                               self.ells_per_bin['gg'])
-            corr_optical = read_correlations(fname_optical)
-            corr_srl = read_correlations(fname_srl)
+            corr_optical = read_correlations(filename=fname_optical)
+            corr_srl = read_correlations(filename=fname_srl)
             if corr_optical is not None and corr_srl is not None:
+                # In case of DR1, mean noise is saved in nl_gg, for DR2 it was updated to Cl_gg_mean
                 ratio = (corr_optical['Cl_gg'] - corr_optical['nl_gg']) / (corr_srl['Cl_gg'] - corr_srl['nl_gg'])
                 self.raw_data_correlations['gg'] = self.data_correlations['gg'].copy()
+                # TODO: make sure it's right
                 self.data_correlations['gg'] -= self.noise_curves['gg']
                 self.data_correlations['gg'] *= ratio
                 self.data_correlations['gg'] += self.noise_curves['gg']
 
     def set_theory_correlations(self):
+        lotss_partial = partial(get_lotss_redshift_distribution, z_sfg=self.z_sfg, a=self.a, r=self.r,
+                                z_tail=self.z_tail, flux_cut=self.flux_min_cut, model=self.dn_dz_model)
         get_redshift_distribution_functions = {
-            'LoTSS_DR2': partial(get_lotss_redshift_distribution, z_tail=self.z_tail),
-            'LoTSS_DR1': partial(get_lotss_redshift_distribution, z_tail=self.z_tail),
+            'LoTSS_DR2': lotss_partial,
+            'LoTSS_DR1': lotss_partial,
             'NVSS': get_nvss_redshift_distribution,
             # TODO: should include mask (?)
             'KiDS_QSO': partial(get_redshift_distribution, self.data.get('g'), n_bins=50, z_col='Z_PHOTO_QSO')
