@@ -198,8 +198,7 @@ def get_lotss_data(data_release, flux_min_cut=2, signal_to_noise=None, optical=T
         filename = 'LOFAR_HBA_T1_DR1_merge_ID_optical_f_v1.2b_restframe.fits' if optical else \
             'LOFAR_HBA_T1_DR1_catalog_v1.0.srl.fits'
     elif data_release == 2:
-        filename = 'LoTSS_DR2_v100.srl.fits'
-        # filename = 'combined-release-v0.1.fits'
+        filename = 'combined-release-v0.1.fits' if optical else 'LoTSS_DR2_v100.srl.fits'
     data_path = os.path.join(DATA_PATH, 'LoTSS/DR{}'.format(data_release), filename)
 
     data = read_fits_to_pandas(data_path)

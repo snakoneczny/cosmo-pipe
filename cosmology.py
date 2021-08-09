@@ -12,8 +12,8 @@ from data_lotss import get_lotss_redshift_distribution
 def get_theory_correlations(config, correlation_symbols, l_arr, omega_param=None):
     config = struct(**config)
 
-    z_arr, n_arr = get_lotss_redshift_distribution(z_tail=config.z_tail, z_sfg=config.z_sfg, z_agn=config.z_agn,
-                                                   r=config.r, new_z_dist=config.new_z_dist, z_max=6)
+    z_arr, n_arr = get_lotss_redshift_distribution(z_tail=config.z_tail, z_sfg=config.z_sfg, a=config.a,
+                                                   r=config.r, model=config.dn_dz_model, z_max=6)
 
     with open(os.path.join(PROJECT_PATH, 'cosmologies.yml'), 'r') as cosmology_file:
         cosmology_params = yaml.full_load(cosmology_file)[config.cosmology_name]

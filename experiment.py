@@ -515,6 +515,11 @@ class Experiment:
         self.base_maps['g'], self.masks['g'], self.noise_maps['g'] = get_lotss_map(
             self.data['g'], data_release=data_release, mask_filename=self.lss_mask_name, nside=self.nside)
 
+        # TODO: delete
+        # import healpy as hp
+        # tmp = hp.pixelfunc.ud_grade(hp.pixelfunc.ud_grade(self.base_maps['g'], nside_out=128), nside_out=self.nside)
+        # self.masks['g'][tmp == 0] = 0
+
         # TODO: delete or permanently add to code / maps
         # import healpy as hp
         # for i in range(len(self.masks['g'])):
