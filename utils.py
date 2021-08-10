@@ -212,7 +212,7 @@ def get_config(config_name, configs_file='../configs.yml'):
     config = config[config_name]
 
     # Dictionary fields, flatten to proper values
-    for key in ['z_tail', 'z_sfg', 'a', 'r', 'bias']:
+    for key in ['z_tail', 'z_sfg', 'a', 'r', 'b_0_scaled', 'b_0', 'b_1', 'b_2']:
         if key in config:
             config[key] = config[key][config['flux_min_cut']]
 

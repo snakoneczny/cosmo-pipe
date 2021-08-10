@@ -28,9 +28,12 @@ def get_theory_correlations(config, correlation_symbols, l_arr, omega_param=None
 
     cosmology = ccl.Cosmology(**cosmology_params)
 
-    bias_arr = config.bias * np.ones(len(z_arr))
-    if config.scale_bias:
+    if config.bias_model == 'scaled':
+        bias_arr = config.b_0_scaled * np.ones(len(z_arr))
         bias_arr = bias_arr / ccl.growth_factor(cosmology, 1. / (1. + z_arr))
+    elif config.bias_model == 'polynomial':
+        bias_params = [config.b_0, config.b_1, config.b_2]
+        bias_arr = sum(bias_params[i] * np.power(z_arr, i) for i in range(len(bias_params)))
 
     tracers_dict = {
         'g': ccl.NumberCountsTracer(cosmology, has_rsd=False, dndz=(z_arr, n_arr), bias=(z_arr, bias_arr)),

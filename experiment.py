@@ -35,8 +35,11 @@ class Experiment:
         self.signal_to_noise = None
         self.flux_min_cut = 0
         self.nside = 0
-        self.scale_bias = None
-        self.bias = 0
+        self.bias_model = None
+        self.b_0_scaled = None
+        self.b_0 = None
+        self.b_1 = None
+        self.b_2 = None
         self.dn_dz_model = None
         self.z_tail = 0
         self.z_sfg = 0
@@ -427,9 +430,12 @@ class Experiment:
 
         cosmology = ccl.Cosmology(**self.cosmology_params)
 
-        bias_arr = self.bias * np.ones(len(self.z_arr))
-        if self.scale_bias:
+        if self.bias_model == 'scaled':
+            bias_arr = self.b_0_scaled * np.ones(len(self.z_arr))
             bias_arr = bias_arr / ccl.growth_factor(cosmology, 1. / (1. + self.z_arr))
+        elif self.bias_model == 'polynomial':
+            bias_params = [self.b_0, self.b_1, self.b_2]
+            bias_arr = sum(bias_params[i] * np.power(self.z_arr, i) for i in range(len(bias_params)))
 
         tracers_dict = {
             'g': ccl.NumberCountsTracer(cosmology, has_rsd=False, dndz=(self.z_arr, self.n_arr),
