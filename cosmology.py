@@ -9,6 +9,7 @@ from utils import struct, ISWTracer
 from data_lotss import get_lotss_redshift_distribution
 
 
+# TODO: consider merging with get_theory_correlations function from the Experiment class
 def get_theory_correlations(config, correlation_symbols, l_arr, omega_param=None):
     config = struct(**config)
 

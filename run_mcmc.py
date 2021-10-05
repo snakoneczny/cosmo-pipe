@@ -1,9 +1,6 @@
 import argparse
-import os
 
-import yaml
-
-from env_config import PROJECT_PATH
+from utils import get_config
 from experiment import Experiment
 
 # Read input arguments
@@ -13,10 +10,9 @@ parser.add_argument('-t', '--tag', dest='tag', help='tag, added as suffix to the
 args = parser.parse_args()
 
 # Read YAML configuration file
-with open(os.path.join(PROJECT_PATH, 'configs.yml'), 'r') as config_file:
-    config = yaml.full_load(config_file)[args.config_name]
-config['experiment_tag'] = args.tag
+config = get_config(args.config_name)
+config.experiment_tag = args.tag
 
 # Run emcee
-experiment = Experiment(config)
+experiment = Experiment(config, set_data=True, set_maps=True, set_correlations=True)
 experiment.run_emcee()

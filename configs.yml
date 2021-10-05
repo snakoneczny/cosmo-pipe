@@ -9,7 +9,7 @@ LoTSS_DR2:
   flux_min_cut: 2
   signal_to_noise: 5
 
-  dn_dz_model: 'power_law'  # 'deep_fields', 'z_tail', 'power_law'
+  dn_dz_model: 'deep_fields'  # 'deep_fields', 'z_tail', 'power_law'
   # Old redshift distribution
   z_tail: {2: 1.3, 1: 1.0, 0.5: 1.0}
   # New redshift distribution
@@ -21,13 +21,13 @@ LoTSS_DR2:
 #  r: {2: 0.94, 1: 0.90, 0.5: 0.93}
   r: {2: 0.91, 1: 0.80, 0.5: 0.93}
   # Bias
-  bias_model: 'polynomial'  # 'linear', 'scaled', 'polynomial'
+  bias_model: 'scaled'  # 'linear', 'scaled', 'polynomial'
   b_0_scaled: {2: 1.4, 1: 1.2, 0.5: 1.1}
   b_0: {2: 1, 1: 0, 0.5: 0}
   b_1: {2: 1, 1: 0, 0.5: 0}
   b_2: {2: 1, 1: 0, 0.5: 0}
 
-  read_data_correlations_flag: True
+  read_data_correlations_flag: False
   cosmology_name: planck
   cosmology_matter_power_spectrum: halofit
   l_range: {
@@ -43,7 +43,7 @@ LoTSS_DR2:
 #    gt: 16,
   }
 
-  starting_params: {bias: [2.1, 0.5], sigma8: [0.83, 0.1]}
+  starting_params: {b_0_scaled: [1.4, 0.5]}  # , sigma8: [0.83, 0.1]}
   n_walkers: 32
   max_iterations: 5000
   continue_sampling: False
@@ -51,14 +51,18 @@ LoTSS_DR2:
 
 LoTSS_DR1:
   lss_survey_name: LoTSS_DR1
-  is_optical: False
+  is_optical: True
   nside: 512
-  signal_to_noise: 0
-  flux_min_cut: 0.5
-  z_tail: 2.0
-  bias: 2.1
-  scale_bias: True
+  flux_min_cut: 2
+  signal_to_noise: 5
 
+  dn_dz_model: 'z_tail'  # 'deep_fields', 'z_tail', 'power_law'
+  # Old redshift distribution
+  z_tail: {2: 2.0}
+  bias_model: 'scaled'  # 'linear', 'scaled', 'polynomial'
+  b_0_scaled: {2: 2.1}  # 2.1
+
+  read_data_correlations_flag: False
   cosmology_name: planck
   cosmology_matter_power_spectrum: halofit
   l_range: {
@@ -70,9 +74,9 @@ LoTSS_DR1:
     gk: 50,
   }
 
-  starting_params: {bias: [2.1, 0.5], sigma8: [0.83, 0.1]}
+  starting_params: {b_0_scaled: [2.1, 0.5]}  # , sigma8: [0.83, 0.1]}
   n_walkers: 32
-  max_iterations: 5000
+  max_iterations: 20000
   continue_sampling: False
 
 

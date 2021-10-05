@@ -54,14 +54,18 @@ def plot_correlation(experiment, correlation_symbol, x_min=0, x_max=None, y_min=
         if correlation_symbol == 'gg':
             plt.plot(ell_arr, noise, color='grey', marker='o', label='noise', markersize=2)
         # ell range lines
-        l_range = experiment.l_range[correlation_symbol]
+        l_range = experiment.config.l_range[correlation_symbol]
         plt.axvline(l_range[0], label='ell range', color='green')
         plt.axvline(l_range[1], color='green')
 
     # Theory
     if correlation_symbol in experiment.theory_correlations:
+        # TODO: refactor, effective ells used in line 48 too
         data_to_plot = experiment.theory_correlations[correlation_symbol] - experiment.noise_curves[correlation_symbol]
-        plt.plot(experiment.l_arr, data_to_plot, 'r', label='theory', markersize=2)
+        dense_l_arr = experiment.l_arr
+        eff_l_arr = experiment.binnings[correlation_symbol].get_effective_ells()
+        ell_arr = dense_l_arr if dense_l_arr.shape[0] == data_to_plot.shape[0] else eff_l_arr
+        plt.plot(ell_arr, data_to_plot, 'r', label='theory', markersize=2)
 
     plt.xlim(xmin=x_min, xmax=x_max)
     plt.ylim(ymin=y_min, ymax=y_max)

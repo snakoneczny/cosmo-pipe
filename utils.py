@@ -18,8 +18,14 @@ logger = logging.getLogger(__name__)
 
 
 class struct(object):
+    original_dict = None
+
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
+        self.original_dict = kwargs
+
+    def get_original_dict(self):
+        return self.original_dict
 
 
 class ISWTracer(ccl.Tracer):
@@ -206,7 +212,8 @@ def read_fits_to_pandas(filepath, columns=None, n=None):
     return table
 
 
-def get_config(config_name, configs_file='../configs.yml'):
+def get_config(config_name):
+    configs_file = os.path.join(PROJECT_PATH, 'configs.yml')
     with open(configs_file, 'r') as config_file:
         config = yaml.full_load(config_file)
     config = config[config_name]
@@ -216,7 +223,7 @@ def get_config(config_name, configs_file='../configs.yml'):
         if key in config:
             config[key] = config[key][config['flux_min_cut']]
 
-    return config
+    return struct(**config)
 
 
 def save_correlations(experiment):
@@ -240,15 +247,16 @@ def save_correlations(experiment):
 def read_correlations(filename=None, experiment=None):
     if experiment:
         experiment_name = get_correlations_filename(experiment)
-        filename = '{}/{}'.format(experiment.lss_survey_name, experiment_name)
+        filename = '{}/{}'.format(experiment.config.lss_survey_name, experiment_name)
     file_path = os.path.join(PROJECT_PATH, 'outputs/correlations/{}.csv'.format(filename))
     return pd.read_csv(file_path)
 
 
 def get_correlations_filename(experiment):
-    optical_name = 'optical' if experiment.is_optical else 'srl'
+    config = experiment.config
+    optical_name = 'optical' if config.is_optical else 'srl'
     experiment_name = '{}_{}_{}mJy_snr={}_nside={}_gg-gk_bin={}'.format(
-        experiment.lss_survey_name, optical_name, experiment.flux_min_cut, experiment.signal_to_noise, experiment.nside,
-        experiment.ells_per_bin['gg']
+        config.lss_survey_name, optical_name, config.flux_min_cut, config.signal_to_noise, config.nside,
+        config.ells_per_bin['gg']
     )
     return experiment_name

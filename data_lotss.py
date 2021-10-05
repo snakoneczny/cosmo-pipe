@@ -56,7 +56,7 @@ def read_lotss_noise_weight_map(nside, data_release, flux_min_cut, signal_to_noi
     return weight_map
 
 
-def get_lotss_noise_weight_map(noise_map, flux_cut=2, signal_to_noise=5):
+def get_lotss_noise_weight_map(noise_map, flux_cut=2, signal_to_noise=0):
     # Read flux distribution from SKADS' S3-SEX simulation
     file_path = os.path.join(DATA_PATH, 'SKADS/skads_flux_counts.result')
     log_flux, counts = np.loadtxt(file_path, unpack=True, delimiter=',', skiprows=1)
