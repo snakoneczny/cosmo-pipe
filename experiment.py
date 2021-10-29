@@ -172,10 +172,9 @@ class Experiment:
             if param_name in cosmo_params:
                 cosmo_params[param_name] = theta[self.arg_names.index(param_name)]
 
-        config = deepcopy(self.config)
-
         # TODO: something smart
         # Update data parameters
+        config = deepcopy(self.config)
         config.z_tail = theta[self.arg_names.index('z_tail')] if 'z_tail' in self.arg_names else config.z_tail
         config.b_0_scaled = theta[
             self.arg_names.index('b_0_scaled')] if 'b_0_scaled' in self.arg_names else config.b_0_scaled
@@ -224,7 +223,6 @@ class Experiment:
             self.set_sigmas()
 
             self.set_inference_covariance()
-            self.inverted_covariance = np.linalg.inv(self.inference_covariance)
             self.set_data_vector()
 
             self.are_correlations_ready = True
@@ -276,6 +274,7 @@ class Experiment:
             a_start += n_ells_a
 
         self.inference_correlation = get_correlation_matrix(self.inference_covariance)
+        self.inverted_covariance = np.linalg.inv(self.inference_covariance)
 
     def set_covariance_matrices(self):
         correlation_pairs = get_pairs(self.correlation_symbols, join_with='-')
@@ -356,7 +355,8 @@ class Experiment:
 
         # Scale auto-correlations for LoTSS DR2 non-optical data
         # TODO: what about scaling gg in case of gt? is it needed? probably not
-        if self.config.lss_survey_name == 'LoTSS_DR2' and not self.config.is_optical and 'gt' not in self.correlation_symbols:
+        # TODO: refactor?
+        if self.config.lss_survey_name == 'LoTSS_DR2' and not self.config.is_optical and 'gt' not in self.correlation_symbols and 'gg' in self.correlation_symbols:
             # TODO: use get correlations filename function
             fname_template = 'LoTSS_DR1/LoTSS_DR1_{}_{}mJy_snr={}_nside={}_gg-gk_bin={}'
             fname_optical = fname_template.format('optical', self.config.flux_min_cut, self.config.signal_to_noise,
@@ -495,22 +495,9 @@ class Experiment:
         self.base_maps['g'], self.masks['g'], self.noise_maps['g'] = get_lotss_map(
             self.data['g'], data_release=data_release, mask_filename=mask_filename, nside=self.config.nside)
 
-        # TODO: delete
-        # import healpy as hp
-        # tmp = hp.pixelfunc.ud_grade(hp.pixelfunc.ud_grade(self.base_maps['g'], nside_out=128), nside_out=self.nside)
-        # self.masks['g'][tmp == 0] = 0
-
-        # TODO: delete or permanently add to code / maps
-        # import healpy as hp
-        # for i in range(len(self.masks['g'])):
-        #     lon, lat = hp.pixelfunc.pix2ang(nside=512, ipix=i, nest=False, lonlat=True)
-        #     # if lon < 100 or lon > 300:
-        #     if 100 < lon < 300:
-        #         self.masks['g'][i] = 0
-
         # Probability mask
         self.weight_maps['g'] = read_lotss_noise_weight_map(self.config.nside, data_release, self.config.flux_min_cut,
-                                                            5)
+                                                            self.config.signal_to_noise)
         self.masks['g'] = merge_mask_with_weights(self.masks['g'], self.weight_maps['g'], min_weight=0.5)
 
     def set_nvss_maps(self):

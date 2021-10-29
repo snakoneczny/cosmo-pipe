@@ -168,9 +168,34 @@ def get_lotss_dr2_mask(nside, filename=None):
     mask = hp.read_map(os.path.join(DATA_PATH, 'LoTSS/DR2/masks/{}.fits'.format(filename)))
     mask = hp.ud_grade(mask, nside)
 
+    # TODO: delete
+    # mask = get_lotss_dr1_mask(nside)
+
     # for i in range(len(mask)):
     #     lon, lat = hp.pixelfunc.pix2ang(nside, i, lonlat=True)
     #     if 60 < lon < 300:
+    #         mask[i] = 0
+
+    # TODO: delete
+    # import healpy as hp
+    # tmp = hp.pixelfunc.ud_grade(hp.pixelfunc.ud_grade(self.base_maps['g'], nside_out=128), nside_out=self.nside)
+    # self.masks['g'][tmp == 0] = 0
+
+    # TODO: delete or permanently add to code / maps
+    # TODO: refactor to some query instead of the for loop
+    # for i in range(len(mask)):
+    #     lon, lat = hp.pixelfunc.pix2ang(nside=nside, ipix=i, nest=False, lonlat=True)
+    #     if lon < 100 or lon > 300:  # Big patch
+    #     if 100 < lon < 300:  # Small patch
+    #         mask[i] = 0
+
+    #     if lat < 50:  # Big north part
+    #     if lat > 50:  # Big south part
+    #         mask[i] = 0
+
+    #     if lon > 160:  # Big left part
+    #     if lon < 160 or lon > 220:  # Big central part
+    #     if lon < 220:  # Big right part
     #         mask[i] = 0
 
     return mask
