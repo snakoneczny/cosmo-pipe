@@ -31,13 +31,13 @@ LoTSS_DR2:
   cosmology_name: planck
   cosmology_matter_power_spectrum: halofit
   l_range: {
-#    gg: [52, 802],
+    gg: [52, 802],
     gk: [52, 802],
 #    gg: [2, 120],
 #    gt: [2, 120],
   }
   ells_per_bin: {
-#    gg: 50,
+    gg: 50,
     gk: 50,
 #    gg: 16,
 #    gt: 16,

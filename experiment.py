@@ -493,7 +493,9 @@ class Experiment:
     def set_lotss_maps(self, data_release=2):
         mask_filename = None if data_release == 1 else self.config.lss_mask_name
         self.base_maps['g'], self.masks['g'], self.noise_maps['g'] = get_lotss_map(
-            self.data['g'], data_release=data_release, mask_filename=mask_filename, nside=self.config.nside)
+            self.data['g'], data_release=data_release, mask_filename=mask_filename, nside=self.config.nside,
+            is_optical=self.config.is_optical,
+        )
 
         # Probability mask
         self.weight_maps['g'] = read_lotss_noise_weight_map(self.config.nside, data_release, self.config.flux_min_cut,

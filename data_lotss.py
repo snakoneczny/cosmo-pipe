@@ -127,13 +127,14 @@ def flux_151_to_144(s_151):
     return s_144
 
 
-def get_lotss_map(lotss_data, data_release, mask_filename=None, nside=2048, cut_pixels=False, masked=True):
+def get_lotss_map(lotss_data, data_release, mask_filename=None, nside=2048, cut_pixels=False, masked=True,
+                  is_optical=False):
     counts_map = get_map(lotss_data['RA'].values, lotss_data['DEC'].values, nside=nside)
     if masked:
         if data_release == 1:
             mask = get_lotss_dr1_mask(nside)
         elif data_release == 2:
-            mask = get_lotss_dr2_mask(nside, filename=mask_filename)
+            mask = get_lotss_dr2_mask(nside, filename=mask_filename, is_optical=is_optical)
         else:
             raise Exception('Wrong LoTSS data release number')
     else:
@@ -163,10 +164,13 @@ def get_lotss_map(lotss_data, data_release, mask_filename=None, nside=2048, cut_
     return counts_map, mask, noise_map
 
 
-def get_lotss_dr2_mask(nside, filename=None):
+def get_lotss_dr2_mask(nside, filename=None, is_optical=False):
     filename = 'Mask_default' if filename is None else filename
     mask = hp.read_map(os.path.join(DATA_PATH, 'LoTSS/DR2/masks/{}.fits'.format(filename)))
     mask = hp.ud_grade(mask, nside)
+
+    if is_optical:
+        mask *= get_dr2_optical_region(nside)
 
     # TODO: delete
     # mask = get_lotss_dr1_mask(nside)
@@ -193,11 +197,34 @@ def get_lotss_dr2_mask(nside, filename=None):
     #     if lat > 50:  # Big south part
     #         mask[i] = 0
 
-    #     if lon > 160:  # Big left part
+    #     if lon > 160:  # Big right part
     #     if lon < 160 or lon > 220:  # Big central part
-    #     if lon < 220:  # Big right part
+    #     if lon < 220:  # Big left part
     #         mask[i] = 0
 
+    return mask
+
+
+def get_dr2_optical_region(nside):
+    mask = np.zeros(hp.pixelfunc.nside2npix(nside))
+    for i in range(len(mask)):
+        lon, lat = hp.pixelfunc.pix2ang(nside, i, lonlat=True)
+        inside_region = (
+            # Big region left
+            (33 < lon < 39 and 25 < lat < 35)
+            # Big region right
+            or ((lon < 33 or lon > 360 - 29) and 18 < lat < 35)
+            # Top stripe
+            or (123.5 < lon < 360 - 121.5 and 59.5 < lat < 65)
+            # Bottom stripe left
+            or (122 < lon < 360 - 84 and 40.2 < lat < 45.5)
+            # Bottom stripe right - left
+            or (130 < lon < 134 and 28.5 < lat < 40)
+            # Bottom stripe right - right
+            or (111 < lon < 130 and 26.5 < lat < 40)
+        )
+        if inside_region:
+            mask[i] = 1
     return mask
 
 

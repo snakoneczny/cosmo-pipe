@@ -12,7 +12,7 @@ args = parser.parse_args()
 # Read YAML configuration file
 config = get_config(args.config_name)
 config.experiment_tag = args.tag
-config['read_data_correlations_flag'] = False
+config.read_data_correlations_flag = False
 print(config)
 
 # Set correlations

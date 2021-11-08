@@ -228,13 +228,13 @@ def get_config(config_name):
 
 def save_correlations(experiment):
     experiment_name = get_correlations_filename(experiment)
-    file_path = os.path.join(PROJECT_PATH,
-                             'outputs/correlations/{}/{}.csv'.format(experiment.lss_survey_name, experiment_name))
+    file_path = os.path.join(
+        PROJECT_PATH, 'outputs/correlations/{}/{}.csv'.format(experiment.config.lss_survey_name, experiment_name))
     df = pd.DataFrame()
     for correlation_symbol in experiment.correlation_symbols:
         df['l'] = experiment.binnings[correlation_symbol].get_effective_ells()
         df['Cl_{}'.format(correlation_symbol)] = experiment.data_correlations[correlation_symbol]
-        if correlation_symbol == 'gg' and not experiment.is_optical:
+        if correlation_symbol == 'gg' and not experiment.config.is_optical:
             df['Cl_{}_raw'.format(correlation_symbol)] = experiment.raw_data_correlations[correlation_symbol]
         df['nl_{}'.format(correlation_symbol)] = experiment.noise_decoupled[correlation_symbol]
         df['nl_{}_mean'.format(correlation_symbol)] = experiment.noise_curves[correlation_symbol]
@@ -254,7 +254,7 @@ def read_correlations(filename=None, experiment=None):
 
 def get_correlations_filename(experiment):
     config = experiment.config
-    optical_name = 'optical' if config.is_optical else 'srl'
+    optical_name = 'opt' if config.is_optical else 'srl'
     experiment_name = '{}_{}_{}mJy_snr={}_nside={}_gg-gk_bin={}'.format(
         config.lss_survey_name, optical_name, config.flux_min_cut, config.signal_to_noise, config.nside,
         config.ells_per_bin['gg']

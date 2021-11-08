@@ -11,6 +11,42 @@ HETDEX_LON_RANGE = [158, 234]
 HETDEX_LAT_RANGE = [43, 60]
 
 
+def plot_correlation_comparison(correlations_a, correlations_b, correlation_symbols, correlation_names,
+                                x_min=0, x_max=None, y_min=None, y_max=None, x_scale='linear', y_scale='linear',
+                                title=None, with_error=True):
+    # Data
+    ell_arr = correlations_a['l']
+    corr_a = correlations_a['Cl_{}'.format(correlation_symbols[0])]
+    noise_a = correlations_a['nl_{}'.format(correlation_symbols[0][:2])]
+    corr_b = correlations_b['Cl_{}'.format(correlation_symbols[1])]
+    noise_b = correlations_b['nl_{}'.format(correlation_symbols[1][:2])]
+    data_to_plot = (corr_a - noise_a) / (corr_b - noise_b)
+
+    # Data error bars
+    error_to_plot = None
+    if with_error:
+        error_a = correlations_a['Cl_{}'.format(correlation_symbols[0][:2])]
+        error_b = correlations_a['Cl_{}'.format(correlation_symbols[1][:2])]
+        # error_to_plot = (error_a / corr_b) - corr_a * error_b / (corr_b * corr_b)
+        error_to_plot = np.sqrt(((error_a / corr_a) ** 2 + (error_b / corr_b) ** 2)) * corr_a / corr_b
+
+    plt.errorbar(ell_arr, data_to_plot, yerr=error_to_plot, fmt='ob', markersize=2)
+    plt.axhline(1, color='green')
+
+    plt.xlim(xmin=x_min, xmax=x_max)
+    plt.ylim(ymin=y_min, ymax=y_max)
+    plt.xscale(x_scale)
+    plt.yscale(y_scale)
+    plt.xlabel('$\\ell$', fontsize=16)
+    y_label = '$(C_\\ell^{{{}}})_{{{}}} / (C_\\ell^{{{}}})_{{{}}}$'.format(
+        correlation_symbols[0][:2], correlation_names[0], correlation_symbols[1][:2], correlation_names[1]
+    )
+    plt.ylabel(y_label, fontsize=16)
+    plt.grid()
+    plt.title(title)
+    plt.show()
+
+
 def plot_many_data_correlations(experiment_dict, correlation_symbol, x_min=0, x_max=None, y_min=None, y_max=None,
                                 x_scale='linear', y_scale='linear', legend_loc='upper right'):
     # Assuming the same theory across experiments
@@ -114,11 +150,11 @@ def pretty_print_corr_symbol(correlation_symbol):
     return r'${} \times {}$'.format(math_symbols[symbol_a], math_symbols[symbol_b])
 
 
-def my_mollview(map, fwhm=0, unit=None, cmap='jet', zoom=False):
+def my_mollview(map, fwhm=0, unit=None, cmap='jet', zoom=False, rot=None):
     if fwhm > 0:
         map = hp.sphtfunc.smoothing(map, fwhm=math.radians(fwhm))
     view_func = hp.zoomtool.mollzoom if zoom else hp.mollview
-    view_func(map, cmap=cmap, unit=unit)
+    view_func(map, cmap=cmap, unit=unit, rot=rot)
     hp.graticule()
 
 
