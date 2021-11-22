@@ -11,6 +11,10 @@ from env_config import DATA_PATH
 from utils import get_map, get_masked_map, get_aggregated_map, read_fits_to_pandas
 
 
+def get_biggest_optical_region(data):
+    return data.loc[((data['RA'] < 33) | (data['RA'] > 360 - 29)) & (18 < data['DEC']) & (data['DEC'] < 35)]
+
+
 def get_lotss_redshift_distribution(z_tail=None, z_sfg=None, a=None, r=None, n=None, flux_cut=None, model='power_law',
                                     z_max=6):
     if model == 'deep_fields':
@@ -121,20 +125,19 @@ def get_skads_sim_data():
 
 
 def flux_151_to_144(s_151):
-    # TODO
+    # assumption: I_nu = I_1400 * (nu / 1400) ^ alpha
     spectral_index = -0.7
-    s_144 = s_151 * math.pow(144, spectral_index) / math.pow(151, spectral_index)
+    s_144 = s_151 * (144 / 151) ** spectral_index
     return s_144
 
 
-def get_lotss_map(lotss_data, data_release, mask_filename=None, nside=2048, cut_pixels=False, masked=True,
-                  is_optical=False):
+def get_lotss_map(lotss_data, data_release, mask_filename=None, nside=2048, cut_pixels=False, masked=True):
     counts_map = get_map(lotss_data['RA'].values, lotss_data['DEC'].values, nside=nside)
     if masked:
         if data_release == 1:
             mask = get_lotss_dr1_mask(nside)
         elif data_release == 2:
-            mask = get_lotss_dr2_mask(nside, filename=mask_filename, is_optical=is_optical)
+            mask = get_lotss_dr2_mask(nside, filename=mask_filename)
         else:
             raise Exception('Wrong LoTSS data release number')
     else:
@@ -164,13 +167,17 @@ def get_lotss_map(lotss_data, data_release, mask_filename=None, nside=2048, cut_
     return counts_map, mask, noise_map
 
 
-def get_lotss_dr2_mask(nside, filename=None, is_optical=False):
+def get_lotss_dr2_mask(nside, filename=None):
     filename = 'Mask_default' if filename is None else filename
-    mask = hp.read_map(os.path.join(DATA_PATH, 'LoTSS/DR2/masks/{}.fits'.format(filename)))
-    mask = hp.ud_grade(mask, nside)
-
-    if is_optical:
-        mask *= get_dr2_optical_region(nside)
+    masks_in_files = [
+        'mask_coverage', 'mask_default', 'mask_noise_75percent', 'mask_noise_99_percent', 'mask_noise_median']
+    if filename in masks_in_files:
+        mask = hp.read_map(os.path.join(DATA_PATH, 'LoTSS/DR2/masks/{}.fits'.format(filename)))
+        mask = hp.ud_grade(mask, nside)
+    elif filename == 'mask_optical':
+        mask = get_dr2_optical_region(nside)
+    else:
+        raise Exception('Mask doesn\'t exist: {}'.format(filename))
 
     # TODO: delete
     # mask = get_lotss_dr1_mask(nside)
@@ -245,7 +252,7 @@ def get_lotss_dr1_mask(nside):
     return mask
 
 
-def get_lotss_data(data_release, flux_min_cut=2, signal_to_noise=None, optical=True):
+def get_lotss_data(data_release, flux_min_cut=2, signal_to_noise=None, optical=True, columns=None):
     if data_release == 1:
         filename = 'LOFAR_HBA_T1_DR1_merge_ID_optical_f_v1.2b_restframe.fits' if optical else \
             'LOFAR_HBA_T1_DR1_catalog_v1.0.srl.fits'
@@ -272,5 +279,8 @@ def get_lotss_data(data_release, flux_min_cut=2, signal_to_noise=None, optical=T
     # print('Big patch: {}'.format(data.shape))
     # data = data.loc[(data['RA'] < 100) | (data['RA'] > 300)]
     # print('Small patch: {}'.format(data.shape))
+
+    if columns is not None:
+        data = data[columns]
 
     return data

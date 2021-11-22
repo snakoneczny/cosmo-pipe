@@ -255,8 +255,8 @@ def read_correlations(filename=None, experiment=None):
 def get_correlations_filename(experiment):
     config = experiment.config
     optical_name = 'opt' if config.is_optical else 'srl'
-    experiment_name = '{}_{}_{}mJy_snr={}_nside={}_gg-gk_bin={}'.format(
-        config.lss_survey_name, optical_name, config.flux_min_cut, config.signal_to_noise, config.nside,
-        config.ells_per_bin['gg']
+    experiment_name = '{}_{}__{}__{}mJy_snr={}_nside={}_gg-gk_bin={}'.format(
+        config.lss_survey_name, optical_name, config.lss_mask_name, config.flux_min_cut, config.signal_to_noise,
+        config.nside, config.ells_per_bin['gg']
     )
     return experiment_name

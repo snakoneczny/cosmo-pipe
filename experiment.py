@@ -210,13 +210,17 @@ class Experiment:
         assert self.are_maps_ready or self.config.read_data_correlations_flag
 
         self.set_binning()
+
+        logger.info('Setting data correlations..')
         if self.config.read_data_correlations_flag:
             self.read_data_correlations()
         else:
             self.set_data_correlations()
 
+        logger.info('Setting theory correlations..')
         self.set_theory_correlations()
 
+        logger.info('Setting covariance..')
         if not self.config.read_data_correlations_flag and with_covariance:
             self.set_covariance_matrices()
             self.set_errors()
@@ -358,16 +362,21 @@ class Experiment:
         # TODO: refactor?
         if self.config.lss_survey_name == 'LoTSS_DR2' and not self.config.is_optical and 'gt' not in self.correlation_symbols and 'gg' in self.correlation_symbols:
             # TODO: use get correlations filename function
-            fname_template = 'LoTSS_DR1/LoTSS_DR1_{}_{}mJy_snr={}_nside={}_gg-gk_bin={}'
-            fname_optical = fname_template.format('optical', self.config.flux_min_cut, self.config.signal_to_noise,
-                                                  self.config.nside, self.config.ells_per_bin['gg'])
-            fname_srl = fname_template.format('srl', self.config.flux_min_cut, self.config.signal_to_noise,
-                                              self.config.nside, self.config.ells_per_bin['gg'])
+            fname_template = 'LoTSS_DR2/LoTSS_DR2_{}__{}__{}mJy_snr={}_nside={}_gg-gk_bin={}'
+            fname_optical = fname_template.format(
+                'opt', 'mask_optical', self.config.flux_min_cut, self.config.signal_to_noise, self.config.nside,
+                self.config.ells_per_bin['gg']
+            )
+            fname_srl = fname_template.format(
+                'srl', 'mask_optical', self.config.flux_min_cut, self.config.signal_to_noise, self.config.nside,
+                self.config.ells_per_bin['gg']
+            )
             corr_optical = read_correlations(filename=fname_optical)
             corr_srl = read_correlations(filename=fname_srl)
             if corr_optical is not None and corr_srl is not None:
-                # In case of DR1, mean noise is saved in nl_gg, for DR2 it was updated to Cl_gg_mean
-                ratio = (corr_optical['Cl_gg'] - corr_optical['nl_gg']) / (corr_srl['Cl_gg'] - corr_srl['nl_gg'])
+                # TODO: make sure it's right
+                ratio = (corr_optical['Cl_gg'] - corr_optical['nl_gg_mean']) / (
+                            corr_srl['Cl_gg'] - corr_srl['nl_gg_mean'])
                 self.raw_data_correlations['gg'] = self.data_correlations['gg'].copy()
                 # TODO: make sure it's right
                 self.data_correlations['gg'] -= self.noise_curves['gg']
@@ -464,6 +473,7 @@ class Experiment:
         self.l_arr = np.arange(3 * self.config.nside)
 
     def set_maps(self):
+        logger.info('Setting maps..')
         set_map_functions = {
             'LoTSS_DR2': partial(self.set_lotss_maps, data_release=2),
             'LoTSS_DR1': partial(self.set_lotss_maps, data_release=1),
@@ -474,8 +484,10 @@ class Experiment:
         if 'g' in self.map_symbols:
             set_map_functions[self.config.lss_survey_name]()
             self.processed_maps['g'] = get_overdensity_map(self.base_maps['g'], self.masks['g'])
+            print('here 6')
             self.noise_curves['gg'] = np.full(3 * self.config.nside,
                                               get_shot_noise(self.base_maps['g'], self.masks['g']))
+            print('here 7')
 
         if 'k' in self.map_symbols:
             self.base_maps['k'], self.masks['k'] = get_cmb_lensing_map(self.config.nside)
@@ -494,7 +506,6 @@ class Experiment:
         mask_filename = None if data_release == 1 else self.config.lss_mask_name
         self.base_maps['g'], self.masks['g'], self.noise_maps['g'] = get_lotss_map(
             self.data['g'], data_release=data_release, mask_filename=mask_filename, nside=self.config.nside,
-            is_optical=self.config.is_optical,
         )
 
         # Probability mask
@@ -509,6 +520,7 @@ class Experiment:
         self.base_maps['g'], self.masks['g'] = get_kids_qso_map(self.data['g'], self.config.nside)
 
     def set_data(self):
+        logger.info('Setting data..')
         if self.config.lss_survey_name == 'LoTSS_DR2':
             self.data['g'] = get_lotss_data(data_release=2, flux_min_cut=self.config.flux_min_cut,
                                             signal_to_noise=self.config.signal_to_noise, optical=self.config.is_optical)

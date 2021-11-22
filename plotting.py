@@ -20,29 +20,43 @@ def plot_correlation_comparison(correlations_a, correlations_b, correlation_symb
     noise_a = correlations_a['nl_{}'.format(correlation_symbols[0][:2])]
     corr_b = correlations_b['Cl_{}'.format(correlation_symbols[1])]
     noise_b = correlations_b['nl_{}'.format(correlation_symbols[1][:2])]
-    data_to_plot = (corr_a - noise_a) / (corr_b - noise_b)
 
-    # Data error bars
-    error_to_plot = None
-    if with_error:
-        error_a = correlations_a['Cl_{}'.format(correlation_symbols[0][:2])]
-        error_b = correlations_a['Cl_{}'.format(correlation_symbols[1][:2])]
-        # error_to_plot = (error_a / corr_b) - corr_a * error_b / (corr_b * corr_b)
-        error_to_plot = np.sqrt(((error_a / corr_a) ** 2 + (error_b / corr_b) ** 2)) * corr_a / corr_b
+    # Error bars
+    error_a = correlations_a['error_{}'.format(correlation_symbols[0][:2])]
+    error_b = correlations_b['error_{}'.format(correlation_symbols[1][:2])]
 
-    plt.errorbar(ell_arr, data_to_plot, yerr=error_to_plot, fmt='ob', markersize=2)
-    plt.axhline(1, color='green')
+    # Upper plot, two correlation functions
+    fig, axs = plt.subplots(2, 1, sharex=True, figsize=(6, 6), gridspec_kw={'height_ratios': [2, 1]})
+    name_a = '$(C_\\ell^{{{}}})_{{{}}}$'.format(correlation_symbols[0][:2], correlation_names[0])
+    name_b = '$(C_\\ell^{{{}}})_{{{}}}$'.format(correlation_symbols[1][:2], correlation_names[1])
+    axs[0].errorbar(ell_arr, corr_a - noise_a, yerr=error_a, fmt='ob', markersize=2, label=name_a)
+    axs[0].errorbar(ell_arr, corr_b - noise_b, yerr=error_b, fmt='og', markersize=2, label=name_b)
 
-    plt.xlim(xmin=x_min, xmax=x_max)
-    plt.ylim(ymin=y_min, ymax=y_max)
-    plt.xscale(x_scale)
-    plt.yscale(y_scale)
-    plt.xlabel('$\\ell$', fontsize=16)
+    axs[0].set_xlim(left=x_min, right=x_max)
+    # plt.ylim(ymin=y_min, ymax=y_max)
+    axs[0].set_xscale('linear')
+    axs[0].set_yscale('log')
+    axs[0].set_ylabel('$C_\\ell$', fontsize=16)
+    axs[0].grid()
+    axs[0].legend(loc='upper right')
+
+    # Lower plot, ratio of the correlations
+    ratio = (corr_a - noise_a) / (corr_b - noise_b)
+    ratio_error = np.sqrt(((error_a / corr_a) ** 2 + (error_b / corr_b) ** 2)) * corr_a / corr_b if with_error else None
+
+    axs[1].errorbar(ell_arr, ratio, yerr=ratio_error, fmt='or', markersize=2)
+    axs[1].axhline(1, color='green')
+
+    axs[1].set_xlim(left=x_min, right=x_max)
+    axs[1].set_ylim(bottom=y_min, top=y_max)
+    axs[1].set_xscale(x_scale)
+    axs[1].set_yscale(y_scale)
+    axs[1].set_xlabel('$\\ell$', fontsize=16)
     y_label = '$(C_\\ell^{{{}}})_{{{}}} / (C_\\ell^{{{}}})_{{{}}}$'.format(
         correlation_symbols[0][:2], correlation_names[0], correlation_symbols[1][:2], correlation_names[1]
     )
-    plt.ylabel(y_label, fontsize=16)
-    plt.grid()
+    axs[1].set_ylabel(y_label, fontsize=16)
+    axs[1].grid()
     plt.title(title)
     plt.show()
 
