@@ -21,16 +21,20 @@ def plot_correlation_comparison(correlations_a, correlations_b, correlation_symb
     corr_b = correlations_b['Cl_{}'.format(correlation_symbols[1])]
     noise_b = correlations_b['nl_{}'.format(correlation_symbols[1][:2])]
 
+    # Remove noise for all calculations
+    corr_a = corr_a - noise_a
+    corr_b = corr_b - noise_b
+
     # Error bars
-    error_a = correlations_a['error_{}'.format(correlation_symbols[0][:2])]
-    error_b = correlations_b['error_{}'.format(correlation_symbols[1][:2])]
+    error_a = correlations_a['error_{}'.format(correlation_symbols[0])]
+    error_b = correlations_b['error_{}'.format(correlation_symbols[1])]
 
     # Upper plot, two correlation functions
     fig, axs = plt.subplots(2, 1, sharex=True, figsize=(6, 6), gridspec_kw={'height_ratios': [2, 1]})
     name_a = '$(C_\\ell^{{{}}})_{{{}}}$'.format(correlation_symbols[0][:2], correlation_names[0])
     name_b = '$(C_\\ell^{{{}}})_{{{}}}$'.format(correlation_symbols[1][:2], correlation_names[1])
-    axs[0].errorbar(ell_arr, corr_a - noise_a, yerr=error_a, fmt='ob', markersize=2, label=name_a)
-    axs[0].errorbar(ell_arr, corr_b - noise_b, yerr=error_b, fmt='og', markersize=2, label=name_b)
+    axs[0].errorbar(ell_arr, corr_a, yerr=error_a, fmt='ob', markersize=2, label=name_a)
+    axs[0].errorbar(ell_arr, corr_b, yerr=error_b, fmt='og', markersize=2, label=name_b)
 
     axs[0].set_xlim(left=x_min, right=x_max)
     # plt.ylim(ymin=y_min, ymax=y_max)
@@ -41,10 +45,10 @@ def plot_correlation_comparison(correlations_a, correlations_b, correlation_symb
     axs[0].legend(loc='upper right')
 
     # Lower plot, ratio of the correlations
-    ratio = (corr_a - noise_a) / (corr_b - noise_b)
-    ratio_error = np.sqrt(((error_a / corr_a) ** 2 + (error_b / corr_b) ** 2)) * corr_a / corr_b if with_error else None
+    ratio = corr_a / corr_b
+    error = np.sqrt(((error_a / corr_a) ** 2 + (error_b / corr_b) ** 2)) * corr_a / corr_b if with_error else None
 
-    axs[1].errorbar(ell_arr, ratio, yerr=ratio_error, fmt='or', markersize=2)
+    axs[1].errorbar(ell_arr, ratio, yerr=error, fmt='or', markersize=2)
     axs[1].axhline(1, color='green')
 
     axs[1].set_xlim(left=x_min, right=x_max)

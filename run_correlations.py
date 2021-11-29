@@ -20,4 +20,4 @@ experiment = Experiment(config, set_data=True, set_maps=True)
 experiment.set_correlations(with_covariance=True)
 
 # Save correlations
-# save_correlations(experiment)
+save_correlations(experiment)

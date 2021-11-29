@@ -234,12 +234,13 @@ def save_correlations(experiment):
     for correlation_symbol in experiment.correlation_symbols:
         df['l'] = experiment.binnings[correlation_symbol].get_effective_ells()
         df['Cl_{}'.format(correlation_symbol)] = experiment.data_correlations[correlation_symbol]
-        if correlation_symbol == 'gg' and not experiment.config.is_optical:
+        if correlation_symbol in experiment.raw_data_correlations:
             df['Cl_{}_raw'.format(correlation_symbol)] = experiment.raw_data_correlations[correlation_symbol]
+            df['error_{}_raw'.format(correlation_symbol)] = experiment.raw_errors[correlation_symbol]
+
         df['nl_{}'.format(correlation_symbol)] = experiment.noise_decoupled[correlation_symbol]
         df['nl_{}_mean'.format(correlation_symbol)] = experiment.noise_curves[correlation_symbol]
-        covariance_symbol = '{c}-{c}'.format(c=correlation_symbol)
-        df['error_{}'.format(correlation_symbol)] = np.sqrt(np.diag(experiment.covariance_matrices[covariance_symbol]))
+        df['error_{}'.format(correlation_symbol)] = experiment.errors[correlation_symbol]
     df.to_csv(file_path, index=False)
     print('Correlations saved to: {}'.format(file_path))
 
