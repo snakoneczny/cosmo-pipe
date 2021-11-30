@@ -95,7 +95,7 @@ def plot_correlation(experiment, correlation_symbol, x_min=0, x_max=None, y_min=
     # Data error bars
     y_err = None
     if with_error and correlation_symbol in experiment.errors:
-        y_err = experiment.errors[correlation_symbol]
+        y_err = experiment.errors[correlation_symbol] if not is_raw else experiment.raw_errors[correlation_symbol]
 
     # Data
     if correlation_symbol in experiment.data_correlations:

@@ -275,13 +275,13 @@ class Experiment:
                 corr_srl = read_correlations(filename=fname_srl)
                 if corr_optical is not None and corr_srl is not None:
                     # TODO: make sure it's right
-                    corr_srl_org = self.data_correlations['gg'] - self.noise_curves['gg']
+                    corr_srl_org = self.raw_data_correlations['gg'] - self.noise_curves['gg']
                     corr_srl_fixing = corr_srl['Cl_gg'] - corr_srl['nl_gg_mean']
                     corr_opt_fixing = corr_optical['Cl_gg'] - corr_optical['nl_gg_mean']
 
                     ratio = corr_opt_fixing / corr_srl_fixing
 
-                    # Errors also requires transformation
+                    # Errors also require transformation
                     error_srl_org = self.errors['gg']
                     error_srl_fixing = corr_srl['error_gg']
                     error_opt_fixing = corr_optical['error_gg']

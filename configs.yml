@@ -10,7 +10,7 @@ LoTSS_DR2:
   flux_min_cut: 2
   signal_to_noise: 5
 
-  dn_dz_model: 'deep_fields'  # 'deep_fields', 'z_tail', 'power_law'
+  dn_dz_model: 'power_law'  # 'deep_fields', 'z_tail', 'power_law'
   # Old redshift distribution
   z_tail: {2: 1.3, 1: 1.0, 0.5: 1.0}
   # New redshift distribution
@@ -23,7 +23,7 @@ LoTSS_DR2:
   r: {2: 0.91, 1: 0.80, 0.5: 0.93}
   # Bias
   bias_model: 'scaled'  # 'linear', 'scaled', 'polynomial'
-  b_0_scaled: {2: 1.4, 1: 1.2, 0.5: 1.1}
+  b_0_scaled: {2: 1.5, 1: 1.2, 0.5: 1.1}
   b_0: {2: 1, 1: 0, 0.5: 0}
   b_1: {2: 1, 1: 0, 0.5: 0}
   b_2: {2: 1, 1: 0, 0.5: 0}
@@ -32,8 +32,8 @@ LoTSS_DR2:
   cosmology_name: planck
   cosmology_matter_power_spectrum: halofit
   l_range: {
-    gg: [52, 802],
-    gk: [52, 802],
+    gg: [102, 802],
+    gk: [102, 802],
 #    gg: [2, 120],
 #    gt: [2, 120],
   }

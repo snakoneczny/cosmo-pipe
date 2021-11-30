@@ -22,10 +22,7 @@ def get_lotss_redshift_distribution(z_tail=None, z_sfg=None, a=None, r=None, n=N
             ''.join(str(flux_cut).split('.')))
         pz_deepfields = read_fits_to_pandas(os.path.join(DATA_PATH, deepfields_file))
         z_arr = pz_deepfields['zbins']
-        n_arr = pz_deepfields['pz']
-
-        from scipy.signal import savgol_filter
-        n_arr = savgol_filter(n_arr, 41, 6)  # window size, polynomial order
+        n_arr = pz_deepfields['pz_boot_mean']
 
     else:
         z_step = 0.01
