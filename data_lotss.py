@@ -6,6 +6,7 @@ import numpy as np
 from scipy.special import erf
 from scipy.integrate import simps
 from tqdm import tqdm
+import pandas as pd
 
 from env_config import DATA_PATH
 from utils import get_map, get_masked_map, get_aggregated_map, read_fits_to_pandas
@@ -22,7 +23,12 @@ def get_lotss_redshift_distribution(z_tail=None, z_sfg=None, a=None, r=None, n=N
             ''.join(str(flux_cut).split('.')))
         pz_deepfields = read_fits_to_pandas(os.path.join(DATA_PATH, deepfields_file))
         z_arr = pz_deepfields['zbins']
-        n_arr = pz_deepfields['pz_boot_mean']
+        n_arr = pz_deepfields['pz']
+
+    elif model == 'tomographer':
+        tomographer = pd.read_csv(os.path.join(DATA_PATH, 'LoTSS/tomographer/full_maskstrict_I2mJy_q5.csv'))
+        z_arr = tomographer['z'][:-1]
+        n_arr = tomographer['dNdz_b'][:-1]
 
     else:
         z_step = 0.01

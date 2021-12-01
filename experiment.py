@@ -472,6 +472,8 @@ class Experiment:
         elif config.bias_model == 'polynomial':
             bias_params = [config.b_0, config.b_1, config.b_2]
             bias_arr = sum(bias_params[i] * np.power(z_arr, i) for i in range(len(bias_params)))
+        elif config.bias_model == 'tomographer':
+            bias_arr = config.b_eff * np.ones(len(z_arr))
 
         tracers_dict = {
             'g': ccl.NumberCountsTracer(cosmology, has_rsd=False, dndz=(z_arr, n_arr), bias=(z_arr, bias_arr)),
