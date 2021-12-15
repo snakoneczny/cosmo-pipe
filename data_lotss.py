@@ -17,7 +17,7 @@ def get_biggest_optical_region(data):
 
 
 def get_lotss_redshift_distribution(z_tail=None, z_sfg=None, a=None, r=None, n=None, flux_cut=None, model='power_law',
-                                    z_max=6):
+                                    z_max=6, z_arr=None):
     if model == 'deep_fields':
         deepfields_file = 'LoTSS/DR2/pz_deepfields/Pz_booterrors_wsum_deepfields_{}mJy.fits'.format(
             ''.join(str(flux_cut).split('.')))
@@ -31,10 +31,11 @@ def get_lotss_redshift_distribution(z_tail=None, z_sfg=None, a=None, r=None, n=N
         n_arr = tomographer['dNdz_b'][:-1]
 
     else:
-        z_step = 0.01
-        z_min = 0
-        z_max = z_max + z_step
-        z_arr = np.arange(z_min, z_max, z_step)
+        if z_arr is None:
+            z_step = 0.01
+            z_min = 0
+            z_max = z_max + z_step
+            z_arr = np.arange(z_min, z_max, z_step)
 
         if model == 'power_law':
             # n_arr = (z_arr ** 2) / (1 + z_arr) * (np.exp((-z_arr / z_sfg)) + r * np.exp(-z_arr / z_agn))
@@ -48,7 +49,7 @@ def get_lotss_redshift_distribution(z_tail=None, z_sfg=None, a=None, r=None, n=N
         else:
             raise Exception('Not known redshift distribution model: {}'.format(model))
 
-        area = simps(n_arr, dx=z_arr[1] - z_arr[0])
+        area = simps(n_arr, z_arr)
         n_arr /= area
 
     return z_arr, n_arr
