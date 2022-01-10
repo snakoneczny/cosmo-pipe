@@ -58,26 +58,26 @@ LoTSS_DR1:
   flux_min_cut: 2
   signal_to_noise: 5
 
-  dn_dz_model: 'deep_fields'  # 'deep_fields', 'z_tail', 'power_law'
+  dn_dz_model: 'z_tail'  # 'deep_fields', 'z_tail', 'power_law'
   # Old redshift distribution
-  z_tail: {2: 2.0}
+  z_tail: {2: 0.9}
   bias_model: 'scaled'  # 'linear', 'scaled', 'polynomial'
-  b_0_scaled: {2: 1.4}  # 2.1
+  b_0_scaled: {2: 1.4}  # 2.1 from DR1, 1.4 for deep fields
 
   read_data_correlations_flag: False
   cosmology_name: planck
   cosmology_matter_power_spectrum: halofit
   l_range: {
     gg: [2, 502],
-#    gk: [2, 502],
+    gk: [2, 502],
   }
   ells_per_bin: {
     gg: 50,
-#    gk: 50,
+    gk: 50,
   }
 
-  continue_sampling: False
-  starting_params: {b_0_scaled: [1.4, 0.5]}  # , sigma8: [0.83, 0.1]}
+  continue_sampling: True
+  starting_params: {b_0_scaled: [1.5, 1.0], z_tail: [1.5, 1.0]}  # , sigma8: [0.83, 0.1]}
   max_iterations: 5000
   n_walkers: 32
 

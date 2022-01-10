@@ -197,13 +197,18 @@ class Experiment:
         return log_prob
 
     def get_log_prior(self, theta):
+        prior_dict = {
+            'b_0_scaled': (0.6, 6.0),
+            'sigma8': (0.2, 2.0),
+            'z_tail': (0.5, 2.5),
+        }
+
         prior = 0
-        if 'b_0_scaled' in self.arg_names and (
-                theta[self.arg_names.index('b_0_scaled')] < 0.6 or theta[self.arg_names.index('b_0_scaled')] > 6):
-            prior = -np.inf
-        if 'sigma8' in self.arg_names and (
-                theta[self.arg_names.index('sigma8')] < 0.2 or theta[self.arg_names.index('sigma8')] > 2):
-            prior = -np.inf
+        for param in prior_dict:
+            if param in self.arg_names:
+                param_val = theta[self.arg_names.index(param)]
+                if param_val < prior_dict[param][0] or param_val > prior_dict[param][1]:
+                    prior = -np.inf
 
         return prior
 
