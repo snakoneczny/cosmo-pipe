@@ -73,6 +73,27 @@ def get_chi_squared(data_vector, model_vector, covariance_matrix):
     return diff.dot(inverted_covariance).dot(diff)
 
 
+# Assuming a - b
+def get_corr_mean_diff(corr_a, corr_b, bin_range):
+    # Substract the known part of shot noise
+    a_cl = corr_a['Cl_gg'] - corr_a['nl_gg']
+    b_cl = corr_b['Cl_gg'] - corr_b['nl_gg']
+
+    # Get difference on each bin with error
+    diff = a_cl - b_cl
+    diff_err = np.sqrt(corr_a['error_gg'] ** 2 + corr_b['error_gg'] ** 2)
+
+    # Limit to bins of interest
+    diff = diff[bin_range[0]:bin_range[1]]
+    diff_err = diff_err[bin_range[0]:bin_range[1]]
+
+    # Get mean value with error
+    diff_mean = diff.mean()
+    diff_mean_err = np.sqrt(np.sum(diff_err ** 2)) / len(diff)
+
+    return diff_mean, diff_mean_err
+
+
 def decouple_correlation(workspace, spectrum):
     return workspace.decouple_cell(workspace.couple_cell([spectrum]))[0]
 
@@ -226,6 +247,7 @@ def get_config(config_name):
     return struct(**config)
 
 
+# TODO: move to experiment as static function
 def save_correlations(experiment):
     experiment_name = get_correlations_filename(experiment)
     file_path = os.path.join(
@@ -234,10 +256,10 @@ def save_correlations(experiment):
     for correlation_symbol in experiment.correlation_symbols:
         df['l'] = experiment.binnings[correlation_symbol].get_effective_ells()
         df['Cl_{}'.format(correlation_symbol)] = experiment.data_correlations[correlation_symbol]
-        if correlation_symbol in experiment.raw_data_correlations:
-            df['Cl_{}_raw'.format(correlation_symbol)] = experiment.raw_data_correlations[correlation_symbol]
+        if correlation_symbol in experiment.raw_errors:
             df['error_{}_raw'.format(correlation_symbol)] = experiment.raw_errors[correlation_symbol]
-
+            df['nl_{}_multicomp'.format(correlation_symbol)] = experiment.multicomp_noise
+            df['nl_{}_multicomp_err'.format(correlation_symbol)] = experiment.multicomp_noise_err
         df['nl_{}'.format(correlation_symbol)] = experiment.noise_decoupled[correlation_symbol]
         df['nl_{}_mean'.format(correlation_symbol)] = experiment.noise_curves[correlation_symbol]
         df['error_{}'.format(correlation_symbol)] = experiment.errors[correlation_symbol]

@@ -19,7 +19,7 @@ from IPython.display import display, Math
 from env_config import PROJECT_PATH
 from utils import logger, get_shot_noise, get_overdensity_map, get_pairs, compute_master, get_correlation_matrix, \
     get_redshift_distribution, ISWTracer, get_chi_squared, decouple_correlation, merge_mask_with_weights, \
-    read_correlations
+    read_correlations, get_corr_mean_diff
 from data_lotss import get_lotss_data, get_lotss_map, get_lotss_redshift_distribution, read_lotss_noise_weight_map
 from data_nvss import get_nvss_map, get_nvss_redshift_distribution
 from data_kids_qso import get_kids_qsos, get_kids_qso_map
@@ -43,13 +43,15 @@ class Experiment:
         self.masks = {}
         self.noise_curves = defaultdict(int)
         self.noise_decoupled = defaultdict(int)
+        self.multicomp_noise = None
+        self.multicomp_noise_err = None
 
         # Correlation containers
         self.z_arr = []
         self.n_arr = []
         self.theory_correlations = {}
         self.data_correlations = {}
-        self.raw_data_correlations = {}
+        self.with_multicomp_noise = False
         self.chi_squared = {}
         self.sigmas = {}
         self.fields = {}
@@ -256,45 +258,9 @@ class Experiment:
         for correlation_symbol in self.correlation_symbols:
             covariance_symbol = '{c}-{c}'.format(c=correlation_symbol)
             self.errors[correlation_symbol] = np.sqrt(np.diag(self.covariance_matrices[covariance_symbol]))
-
-            # TODO: refactor, code copied from set_data_correlations_function
-            transform_auto_corr_condition = (
-                    self.config.lss_survey_name == 'LoTSS_DR2'
-                    and not self.config.is_optical
-                    and not self.config.lss_mask_name == 'mask_optical'
-                    and 'gt' not in self.correlation_symbols
-                    and 'gg' in self.correlation_symbols
-
-            )
-            if transform_auto_corr_condition:
-                fname_template = 'LoTSS_DR2/LoTSS_DR2_{}__{}__{}mJy_snr={}_nside={}_gg-gk_bin={}'
-                fname_optical = fname_template.format(
-                    'opt', 'mask_optical', self.config.flux_min_cut, self.config.signal_to_noise, self.config.nside,
-                    self.config.ells_per_bin['gg']
-                )
-                fname_srl = fname_template.format(
-                    'srl', 'mask_optical', self.config.flux_min_cut, self.config.signal_to_noise, self.config.nside,
-                    self.config.ells_per_bin['gg']
-                )
-                corr_optical = read_correlations(filename=fname_optical)
-                corr_srl = read_correlations(filename=fname_srl)
-                if corr_optical is not None and corr_srl is not None:
-                    # TODO: make sure it's right
-                    corr_srl_org = self.raw_data_correlations['gg'] - self.noise_curves['gg']
-                    corr_srl_fixing = corr_srl['Cl_gg'] - corr_srl['nl_gg_mean']
-                    corr_opt_fixing = corr_optical['Cl_gg'] - corr_optical['nl_gg_mean']
-
-                    ratio = corr_opt_fixing / corr_srl_fixing
-
-                    # Errors also require transformation
-                    error_srl_org = self.errors['gg']
-                    error_srl_fixing = corr_srl['error_gg']
-                    error_opt_fixing = corr_optical['error_gg']
-
-                    self.raw_errors['gg'] = self.errors['gg'].copy()
-                    self.errors['gg'] = np.sqrt(((error_srl_org / corr_srl_org) ** 2 + (
-                            error_srl_fixing / corr_srl_fixing) ** 2 + (
-                                                         error_opt_fixing / corr_opt_fixing) ** 2)) * corr_srl_org * ratio
+            if self.with_multicomp_noise and self.multicomp_noise:
+                self.raw_errors['gg'] = self.errors['gg'].copy()
+                self.errors['gg'] = np.sqrt(self.raw_errors['gg'] ** 2 + self.multicomp_noise_err ** 2)
 
     def set_inference_covariance(self):
         total_length = sum(self.n_ells.values())
@@ -371,12 +337,13 @@ class Experiment:
         correlations_df = read_correlations(experiment=self)
         for correlation_symbol in self.correlation_symbols:
             self.data_correlations[correlation_symbol] = correlations_df['Cl_{}'.format(correlation_symbol)]
-            if 'Cl_{}_raw'.format(correlation_symbol) in correlations_df:
-                self.raw_data_correlations[correlation_symbol] = correlations_df['Cl_{}_raw'.format(correlation_symbol)]
-                self.raw_errors[correlation_symbol] = correlations_df['error_{}_raw'.format(correlation_symbol)]
             self.noise_decoupled[correlation_symbol] = correlations_df['nl_{}'.format(correlation_symbol)]
             self.noise_curves[correlation_symbol] = correlations_df['nl_{}_mean'.format(correlation_symbol)][0]
             self.errors[correlation_symbol] = correlations_df['error_{}'.format(correlation_symbol)]
+            if 'nl_{}_multicomp'.format(correlation_symbol) in correlations_df:
+                self.multicomp_noise = correlations_df['nl_{}_multicomp'.format(correlation_symbol)]
+                self.multicomp_noise_err = correlations_df['nl_{}_multicomp_err'.format(correlation_symbol)]
+                self.raw_errors[correlation_symbol] = correlations_df['error_{}_raw'.format(correlation_symbol)]
 
     def set_data_correlations(self):
         # Get fields
@@ -406,15 +373,14 @@ class Experiment:
         # Scale auto-correlations for LoTSS DR2 non-optical data
         # TODO: what about scaling gg in case of gt? is it needed? probably not
         # TODO: refactor?
-        transform_auto_corr_condition = (
+        self.with_multicomp_noise = (
                 self.config.lss_survey_name == 'LoTSS_DR2'
                 and not self.config.is_optical
                 and not self.config.lss_mask_name == 'mask_optical'
                 and 'gt' not in self.correlation_symbols
                 and 'gg' in self.correlation_symbols
-
         )
-        if transform_auto_corr_condition:
+        if self.with_multicomp_noise:
             # TODO: use get correlations filename function
             fname_template = 'LoTSS_DR2/LoTSS_DR2_{}__{}__{}mJy_snr={}_nside={}_gg-gk_bin={}'
             fname_optical = fname_template.format(
@@ -428,15 +394,10 @@ class Experiment:
             corr_optical = read_correlations(filename=fname_optical)
             corr_srl = read_correlations(filename=fname_srl)
             if corr_optical is not None and corr_srl is not None:
-                # TODO: make sure it's right
-                corr_srl_fixing = corr_srl['Cl_gg'] - corr_srl['nl_gg_mean']
-                corr_opt_fixing = corr_optical['Cl_gg'] - corr_optical['nl_gg_mean']
-                ratio = corr_opt_fixing / corr_srl_fixing
-                self.raw_data_correlations['gg'] = self.data_correlations['gg'].copy()
-                # TODO: make sure it's right
-                self.data_correlations['gg'] -= self.noise_curves['gg']
-                self.data_correlations['gg'] *= ratio
-                self.data_correlations['gg'] += self.noise_curves['gg']
+                self.multicomp_noise, self.multicomp_noise_err = get_corr_mean_diff(corr_srl, corr_optical,
+                                                                                    self.bin_range['gg'])
+                self.noise_decoupled['gg'] += self.multicomp_noise
+                self.noise_curves['gg'] += self.multicomp_noise
 
     def set_theory_correlations(self):
         # Get cosmology params

@@ -12,22 +12,29 @@ HETDEX_LAT_RANGE = [43, 60]
 
 
 def plot_correlation_comparison(correlations_a, correlations_b, correlation_symbols, correlation_names,
-                                x_min=0, x_max=None, y_min=None, y_max=None, x_scale='linear', y_scale='linear',
+                                is_raw=[False, False], x_min=0, x_max=None, y_min=None, y_max=None, x_scale='linear',
+                                y_scale='linear',
                                 title=None, with_error=True):
     # Data
     ell_arr = correlations_a['l']
     corr_a = correlations_a['Cl_{}'.format(correlation_symbols[0])]
-    noise_a = correlations_a['nl_{}'.format(correlation_symbols[0][:2])]
+    noise_a = correlations_a['nl_{}'.format(correlation_symbols[0])]
     corr_b = correlations_b['Cl_{}'.format(correlation_symbols[1])]
-    noise_b = correlations_b['nl_{}'.format(correlation_symbols[1][:2])]
+    noise_b = correlations_b['nl_{}'.format(correlation_symbols[1])]
 
     # Remove noise for all calculations
     corr_a = corr_a - noise_a
     corr_b = corr_b - noise_b
+    if is_raw[0]:
+        corr_a += correlations_a['nl_{}_multicomp'.format(correlation_symbols[0])]
+    if is_raw[1]:
+        corr_b += correlations_b['nl_{}_multicomp'.format(correlation_symbols[1])]
 
     # Error bars
-    error_a = correlations_a['error_{}'.format(correlation_symbols[0])]
-    error_b = correlations_b['error_{}'.format(correlation_symbols[1])]
+    error_a = correlations_a['error_{}'.format(correlation_symbols[0])] if not is_raw[0] else correlations_a[
+        'error_{}_raw'.format(correlation_symbols[0])]
+    error_b = correlations_b['error_{}'.format(correlation_symbols[1])] if not is_raw[1] else correlations_b[
+        'error_{}_raw'.format(correlation_symbols[1])]
 
     # Upper plot, two correlation functions
     fig, axs = plt.subplots(2, 1, sharex=True, figsize=(6, 6), gridspec_kw={'height_ratios': [2, 1]})
@@ -101,7 +108,9 @@ def plot_correlation(experiment, correlation_symbol, x_min=0, x_max=None, y_min=
     if correlation_symbol in experiment.data_correlations:
         ell_arr = experiment.binnings[correlation_symbol].get_effective_ells()
         noise = experiment.noise_decoupled[correlation_symbol]
-        correlation_dict = experiment.raw_data_correlations if is_raw else experiment.data_correlations
+        if is_raw:
+            noise -= experiment.multicomp_noise
+        correlation_dict = experiment.data_correlations
         data_to_plot = correlation_dict[correlation_symbol] - noise
         plt.errorbar(ell_arr, data_to_plot, yerr=y_err, fmt='ob', label='data', markersize=2)
         # Shot noise
