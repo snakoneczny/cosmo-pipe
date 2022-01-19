@@ -1,5 +1,6 @@
 import math
 import os
+from collections import defaultdict
 
 import healpy as hp
 import numpy as np
@@ -12,12 +13,128 @@ from env_config import DATA_PATH
 from utils import get_map, get_masked_map, get_aggregated_map, read_fits_to_pandas
 
 
+# TODO: refactor, shorten, split into more functions (?)
+def get_redshift_distributions(data_optical, data_skads):
+    # Tomographer
+    z_sfg_t = {2: (3.77263046e-02, 7.89948246e-03), 1: None, 0.5: None}
+    a_t = {2: (4.44865395e+00, -2.66729855e-01), 1: None, 0.5: None}
+    r_t = {2: (1.81466381e-01, 5.02055812e-02), 1: None, 0.5: None}
+
+    # Fit to deep fields
+    z_sfg_d = {2: 0.13, 1: 0.14, 0.5: 0.15}
+    a_d = {2: 4.66, 1: 4.60, 0.5: 4.56}
+    r_d = {2: 0.94, 1: 0.90, 0.5: 0.93}
+
+    # Fit to DR2 correlations
+    z_sfg_f = {2: 0.15, 1: 0.22, 0.5: 0.15}
+    a_f = {2: 4.8, 1: 5.2, 0.5: 4.56}
+    r_f = {2: 0.91, 1: 0.80, 0.5: 0.93}
+
+    z_tail = {2: 1.3}
+    z_tail_limit = {2: (-0.4, 0.27)}
+
+    redshift_distributions = defaultdict(dict)
+    for flux_cut in [2, 1, 0.5]:
+
+        # TRECS
+        filepath = os.path.join(DATA_PATH, 'TRECS/pz/trecs{}wide_z_nz_{}mjy.dat')
+        trecs_all_filepath = filepath.format('ALL', flux_cut)
+        trecs_sfg_filepath = filepath.format('SFG', flux_cut)
+        trecs_agn_filepath = filepath.format('AGN', flux_cut)
+
+        trecs_all = pd.read_table(trecs_all_filepath, sep=' ', names=['z', 'nz'])
+        trecs_sfg = pd.read_table(trecs_sfg_filepath, sep=' ', names=['z', 'nz'])
+        trecs_agn = pd.read_table(trecs_agn_filepath, sep=' ', names=['z', 'nz'])
+
+        redshift_distributions['TRECS'][flux_cut] = {'z': trecs_all['z'], 'pz': trecs_all['nz'],
+                                                     'pz_sfg': trecs_sfg['nz'], 'pz_agn': trecs_agn['nz']}
+
+        # Deep fields
+        pz_deepfields = read_fits_to_pandas(os.path.join(DATA_PATH,
+                                                         'LoTSS/DR2/pz_deepfields/Pz_booterrors_wsum_deepfields_{}mJy.fits'.format(
+                                                             ''.join(str(flux_cut).split('.')))))
+
+        key = 'deep fields'
+        redshift_distributions[key][flux_cut] = {'z': pz_deepfields['zbins'], 'pz': pz_deepfields['pz']}
+
+        key = 'deep fields, boot'
+        redshift_distributions[key][flux_cut] = {'z': pz_deepfields['zbins'], 'pz': pz_deepfields['pz_boot_mean'],
+                                                 'pz_min': pz_deepfields['pz_boot_mean'] - pz_deepfields[
+                                                     'error_boot'] / 2,
+                                                 'pz_max': pz_deepfields['pz_boot_mean'] + pz_deepfields[
+                                                     'error_boot'] / 2}
+
+        # Power laws
+        power_laws = [
+            ('power law AGN, deep fields', [z_sfg_d, a_d, r_d]),
+            ('power law AGN, DR2', [z_sfg_f, a_f, r_f]),
+            ('tomographer fit', [z_sfg_t, a_t, r_t]),
+        ]
+        for key, params in power_laws:
+            if params[0][flux_cut]:
+                z_sfg, a, r = params[0][flux_cut], params[1][flux_cut], params[2][flux_cut]
+                n_arr_min, n_arr_max = None, None
+                if isinstance(z_sfg, tuple):
+                    z_sfg, z_sfg_err = z_sfg[0], z_sfg[1]
+                    a, a_err = a[0], a[1]
+                    r, r_err = r[0], r[1]
+
+                    z_sfg_min = z_sfg - z_sfg_err / 2
+                    a_min = a - a_err / 2
+                    r_min = r - r_err / 2
+                    z_sfg_max = z_sfg + z_sfg_err / 2
+                    a_max = a + a_err / 2
+                    r_max = r + r_err / 2
+
+                    _, n_arr_min = get_lotss_redshift_distribution(z_sfg=z_sfg_min, a=a_min, r=r_min, model='power_law',
+                                                                   z_max=6, normalize=False)
+                    _, n_arr_max = get_lotss_redshift_distribution(z_sfg=z_sfg_max, a=a_max, r=r_max, model='power_law',
+                                                                   z_max=6, normalize=False)
+
+                z_arr, n_arr = get_lotss_redshift_distribution(z_sfg=z_sfg, a=a, r=r, model='power_law', z_max=6,
+                                                               normalize=False)
+
+                redshift_distributions[key][flux_cut] = {'z': z_arr, 'pz': n_arr, 'pz_min': n_arr_min,
+                                                         'pz_max': n_arr_max}
+
+        # DR1 z tail
+        key = 'z tail, DR1'
+        if flux_cut in z_tail:
+            z_tail_min = z_tail[flux_cut] + z_tail_limit[flux_cut][0]
+            z_tail_max = z_tail[flux_cut] + z_tail_limit[flux_cut][1]
+
+            z_arr, n_arr = get_lotss_redshift_distribution(z_tail=z_tail[flux_cut], model='z_tail', z_max=6)
+            _, n_arr_min = get_lotss_redshift_distribution(z_tail=z_tail_min, model='z_tail', z_max=6)
+            _, n_arr_max = get_lotss_redshift_distribution(z_tail=z_tail_max, model='z_tail', z_max=6)
+
+            # redshift_distributions[key][flux_cut] = {'z': z_arr, 'pz': n_arr, 'pz_min': n_arr_min, 'pz_max': n_arr_max}
+            redshift_distributions[key][flux_cut] = {'z': z_arr, 'pz': n_arr}
+
+        # Photo-z
+        key = 'photo-z, DR2'
+        data_cut = data_optical.loc[data_optical['Total_flux'] > flux_cut]
+
+        n_arr, z_arr = np.histogram(data_cut['z_best'][~np.isnan(data_cut['z_best'])], bins=100, density=True)
+        z_arr = [(z_arr[i] + z_arr[i + 1]) / 2 for i in range(len(z_arr) - 1)]
+        redshift_distributions[key][flux_cut] = {'z': z_arr, 'pz': n_arr}
+
+        # SKADS
+        key = 'SKADS'
+        data_cut = data_skads.loc[data_skads['S_144'] > flux_cut]
+
+        n_arr, z_arr = np.histogram(data_cut['redshift'][~np.isnan(data_cut['redshift'])], bins=100, density=True)
+        z_arr = [(z_arr[i] + z_arr[i + 1]) / 2 for i in range(len(z_arr) - 1)]
+        redshift_distributions[key][flux_cut] = {'z': z_arr, 'pz': n_arr}
+
+    return redshift_distributions
+
+
 def get_biggest_optical_region(data):
     return data.loc[((data['RA'] < 33) | (data['RA'] > 360 - 29)) & (18 < data['DEC']) & (data['DEC'] < 35)]
 
 
 def get_lotss_redshift_distribution(z_tail=None, z_sfg=None, a=None, r=None, n=None, flux_cut=None, model='power_law',
-                                    z_max=6, z_arr=None):
+                                    z_max=6, z_arr=None, normalize=True):
     if model == 'deep_fields':
         deepfields_file = 'LoTSS/DR2/pz_deepfields/Pz_booterrors_wsum_deepfields_{}mJy.fits'.format(
             ''.join(str(flux_cut).split('.')))
@@ -49,8 +166,9 @@ def get_lotss_redshift_distribution(z_tail=None, z_sfg=None, a=None, r=None, n=N
         else:
             raise Exception('Not known redshift distribution model: {}'.format(model))
 
-        area = simps(n_arr, z_arr)
-        n_arr /= area
+        if normalize:
+            area = simps(n_arr, z_arr)
+            n_arr /= area
 
     return z_arr, n_arr
 
@@ -222,17 +340,17 @@ def get_dr2_optical_region(nside):
         lon, lat = hp.pixelfunc.pix2ang(nside, i, lonlat=True)
         inside_region = (
             # Big region left
-            (33 < lon < 39 and 25 < lat < 35)
-            # Big region right
-            or ((lon < 33 or lon > 360 - 29) and 18 < lat < 35)
-            # Top stripe
-            or (123.5 < lon < 360 - 121.5 and 59.5 < lat < 65)
-            # Bottom stripe left
-            or (122 < lon < 360 - 84 and 40.2 < lat < 45.5)
-            # Bottom stripe right - left
-            or (130 < lon < 134 and 28.5 < lat < 40)
-            # Bottom stripe right - right
-            or (111 < lon < 130 and 26.5 < lat < 40)
+                (33 < lon < 39 and 25 < lat < 35)
+                # Big region right
+                or ((lon < 33 or lon > 360 - 29) and 18 < lat < 35)
+                # Top stripe
+                or (123.5 < lon < 360 - 121.5 and 59.5 < lat < 65)
+                # Bottom stripe left
+                or (122 < lon < 360 - 84 and 40.2 < lat < 45.5)
+                # Bottom stripe right - left
+                or (130 < lon < 134 and 28.5 < lat < 40)
+                # Bottom stripe right - right
+                or (111 < lon < 130 and 26.5 < lat < 40)
         )
         if inside_region:
             mask[i] = 1
