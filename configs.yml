@@ -3,9 +3,9 @@
 
 LoTSS_DR2:
   lss_survey_name: LoTSS_DR2
-  is_optical: True
+  is_optical: False
   # mask_coverage, mask_default, mask_noise_75percent, mask_noise_99_percent, mask_noise_median, mask_optical
-  lss_mask_name: mask_optical
+  lss_mask_name: mask_coverage
   nside: 512
   flux_min_cut: 2
   signal_to_noise: 5

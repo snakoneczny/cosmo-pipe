@@ -3,11 +3,12 @@ import copy
 
 import yaml
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 import pyccl as ccl
 from scipy.integrate import simps
 
-from env_config import PROJECT_PATH
+from env_config import PROJECT_PATH, DATA_PATH
 from scipy.optimize import curve_fit
 
 
@@ -96,19 +97,56 @@ def normalize_dists(redshift_distributions):
     return redshift_distributions
 
 
-def make_tomographer_fit(tomographer, p_0):
-    popt, pcov = curve_fit(get_powerlaw_redshift, tomographer['z'], tomographer['dNdz_b'],
-                           sigma=tomographer['dNdz_b_err'], p0=p_0, absolute_sigma=True)
-    perr = np.sqrt(np.diag(pcov))
-    return popt, perr
-
-
 def get_powerlaw_redshift(z_arr, z_sfg, a, r, n):
     return n * (z_arr ** 2) / (1 + z_arr) * (np.exp((-z_arr / z_sfg)) + r ** 2 / (1 + z_arr) ** a)
 
 
+def make_tomographer_fit(filepath, function, p0, p0_b):
+    # Read tomographer
+    tomographer = pd.read_csv(filepath)
+    tomographer = tomographer.rename(columns={'dIdz_b': 'dNdz_b', 'dIdz_b_err': 'dNdz_b_err'})
+
+    # Apply bias model by scalling the tomographer
+    tomographer_b = copy.copy(tomographer)
+    with open(os.path.join(PROJECT_PATH, 'cosmologies.yml'), 'r') as cosmology_file:
+        cosmology_params = yaml.full_load(cosmology_file)['planck']
+    cosmology = ccl.Cosmology(**cosmology_params)
+    tomographer_b['dNdz_b'] *= ccl.growth_factor(cosmology, 1. / (1. + tomographer['z']))
+    tomographer_b['dNdz_b_err'] *= ccl.growth_factor(cosmology, 1. / (1. + tomographer['z']))
+
+    # TODO: make plots of initial parameters
+
+    # Make fits with scipy
+    popt, perr = my_curve_fit(
+        tomographer['z'], tomographer['dNdz_b'], tomographer['dNdz_b_err'], function, p0)
+    print('Best fit: ', popt, perr)
+
+    popt_b, perr_b = my_curve_fit(
+        tomographer_b['z'], tomographer_b['dNdz_b'], tomographer_b['dNdz_b_err'], function, p0_b)
+    print('Best fit with bias: ', popt_b, perr_b)
+
+    # Linear x scale
+    make_tomographer_plot(tomographer, popt, perr, ylabel='N * b', xscale='linear', add_bias=False)
+    make_tomographer_plot(tomographer_b, popt_b, perr_b, ylabel='N * b', xscale='linear', add_bias=True)
+    make_tomographer_plot(tomographer_b, popt_b, perr_b, xscale='linear', ylabel='N (assuming 1 / D(z))',
+                          add_bias=False)
+
+    # Log x scale
+    make_tomographer_plot(tomographer, popt, perr, xscale='log', add_bias=False)
+    make_tomographer_plot(tomographer_b, popt_b, perr_b, xscale='log', add_bias=True)
+    make_tomographer_plot(tomographer_b, popt_b, perr_b, xscale='log', ylabel='N (assuming 1 / D(z))', add_bias=False)
+
+
+def my_curve_fit(x, y, y_err, function, p0):
+    popt, pcov = curve_fit(function, x, y, sigma=y_err, p0=p0, absolute_sigma=True)
+    perr = np.sqrt(np.diag(pcov))
+    return popt, perr
+
+
 def make_tomographer_plot(tomographer, popt, perr, func=get_powerlaw_redshift, xscale='linear', ylabel='N * b',
                           add_bias=False):
+    plt.figure()
+
     # Plot results
     z_max = 6
     z_step = 0.01
@@ -153,3 +191,4 @@ def make_tomographer_plot(tomographer, popt, perr, func=get_powerlaw_redshift, x
     plt.xscale(xscale)
     plt.xlabel('z')
     plt.ylabel(ylabel)
+    plt.show()
