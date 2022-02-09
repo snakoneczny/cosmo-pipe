@@ -17,10 +17,11 @@ from tqdm.notebook import tqdm
 from IPython.display import display, Math
 
 from env_config import PROJECT_PATH
-from utils import logger, get_shot_noise, get_overdensity_map, get_pairs, compute_master, get_correlation_matrix, \
+from utils import logger, get_shot_noise, get_overdensity_map, get_pairs, get_correlation_matrix, \
     get_redshift_distribution, ISWTracer, get_chi_squared, decouple_correlation, merge_mask_with_weights, \
-    read_correlations, get_corr_mean_diff
-from data_lotss import get_lotss_data, get_lotss_map, get_lotss_redshift_distribution, read_lotss_noise_weight_map
+    read_correlations, get_corr_mean_diff, get_correlations, get_jackknife_masks
+from data_lotss import get_lotss_data, get_lotss_map, get_lotss_redshift_distribution, read_lotss_noise_weight_map, \
+    LOTSS_JACKKNIFE_REGIONS
 from data_nvss import get_nvss_map, get_nvss_redshift_distribution
 from data_kids_qso import get_kids_qsos, get_kids_qso_map
 from data_cmb import get_cmb_lensing_map, get_cmb_lensing_noise, get_cmb_temperature_map, \
@@ -44,7 +45,7 @@ class Experiment:
         self.noise_curves = defaultdict(int)
         self.noise_decoupled = defaultdict(int)
         self.multicomp_noise = None
-        self.multicomp_noise_err = None
+        self.multicomp_noise_err = {}
 
         # Correlation containers
         self.z_arr = []
@@ -57,10 +58,10 @@ class Experiment:
         self.fields = {}
         self.workspaces = {}
         self.binnings = {}
-        self.covariance_matrices = {}
-        self.errors = {}
-        self.raw_errors = {}
-        self.correlation_matrices = {}
+        self.covariance_matrices = defaultdict(dict)
+        self.errors = defaultdict(dict)
+        self.raw_errors = defaultdict(dict)
+        self.correlation_matrices = defaultdict(dict)
         self.l_arr = None
         self.bin_range = {}
         self.n_ells = {}
@@ -230,7 +231,8 @@ class Experiment:
 
         logger.info('Setting covariance..')
         if not self.config.read_data_correlations_flag and with_covariance:
-            self.set_covariance_matrices()
+            self.set_gauss_covariance()
+            self.set_jackknife_covariance()
             self.set_errors()
             self.set_sigmas()
 
@@ -243,7 +245,7 @@ class Experiment:
         for corr_symbol in self.data_correlations:
             bin_range = self.bin_range[corr_symbol]
             data = self.data_correlations[corr_symbol][bin_range[0]:bin_range[1]]
-            cov_matrix = self.covariance_matrices[corr_symbol + '-' + corr_symbol]
+            cov_matrix = self.covariance_matrices['gauss'][corr_symbol + '-' + corr_symbol]
             cov_matrix = cov_matrix[bin_range[0]:bin_range[1], bin_range[0]:bin_range[1]]
 
             model = self.theory_correlations[corr_symbol]
@@ -255,12 +257,15 @@ class Experiment:
             self.sigmas[corr_symbol] = math.sqrt(diff) if diff > 0 else None
 
     def set_errors(self):
-        for correlation_symbol in self.correlation_symbols:
-            covariance_symbol = '{c}-{c}'.format(c=correlation_symbol)
-            self.errors[correlation_symbol] = np.sqrt(np.diag(self.covariance_matrices[covariance_symbol]))
+        for error_method in self.covariance_matrices.keys():
+            for correlation_symbol in self.correlation_symbols:
+                covariance_symbol = '{c}-{c}'.format(c=correlation_symbol)
+                self.errors[error_method][correlation_symbol] = np.sqrt(
+                    np.diag(self.covariance_matrices[error_method][covariance_symbol]))
             if self.with_multicomp_noise and self.multicomp_noise:
-                self.raw_errors['gg'] = self.errors['gg'].copy()
-                self.errors['gg'] = np.sqrt(self.raw_errors['gg'] ** 2 + self.multicomp_noise_err ** 2)
+                self.raw_errors[error_method]['gg'] = self.errors[error_method]['gg'].copy()
+                self.errors[error_method]['gg'] = np.sqrt(
+                    self.raw_errors[error_method]['gg'] ** 2 + self.multicomp_noise_err[error_method] ** 2)
 
     def set_inference_covariance(self):
         total_length = sum(self.n_ells.values())
@@ -280,7 +285,7 @@ class Experiment:
                 b_end = b_start + n_ells_b
 
                 # TODO: make sure the order is right, fix last indexing
-                self.inference_covariance[a_start: a_end, b_start: b_end] = self.covariance_matrices[
+                self.inference_covariance[a_start: a_end, b_start: b_end] = self.covariance_matrices['gauss'][
                                                                                 corr_symbol_b + '-' + corr_symbol_a][
                                                                             bin_range_a[0]:bin_range_a[1],
                                                                             bin_range_b[0]:bin_range_b[1]]
@@ -291,9 +296,60 @@ class Experiment:
         self.inference_correlation = get_correlation_matrix(self.inference_covariance)
         self.inverted_covariance = np.linalg.inv(self.inference_covariance)
 
-    def set_covariance_matrices(self):
+    def set_jackknife_covariance(self):
+        jacked_masks = get_jackknife_masks(self.masks['g'], LOTSS_JACKKNIFE_REGIONS, nside=self.config.nside)
+        jacked_correlations = dict([(corr_symbol, []) for corr_symbol in self.correlation_symbols])
+
+        original_mask_size = self.masks['g'].nonzero()[0].shape[0]
+        masks = deepcopy(self.masks)
+        processed_maps = deepcopy(self.processed_maps)
+        norm_factors = []
+        for jacked_mask in tqdm(jacked_masks):
+            masks['g'] = jacked_mask
+            processed_maps['g'] = get_overdensity_map(self.base_maps['g'], jacked_mask)
+
+            # Calculate all relevant correlations
+            _, _, correlations, _, _ = \
+                get_correlations(self.map_symbols, masks, processed_maps, self.correlation_symbols, self.binnings)
+
+            # Add new correlation
+            for corr_symbol in correlations:
+                jacked_correlations[corr_symbol].append(correlations[corr_symbol])
+
+            # Dependence normalizing factor
+            jacked_mask_size = jacked_mask.nonzero()[0].shape[0]
+            norm_factors.append(jacked_mask_size / original_mask_size)
+
+        mean_correlations = dict(
+            [(corr_symbol, np.mean(jacked_correlations[corr_symbol], axis=0)) for corr_symbol in jacked_correlations])
+
+        # Calculate covariances
         correlation_pairs = get_pairs(self.correlation_symbols, join_with='-')
-        for correlation_pair in tqdm(correlation_pairs, desc='covariance matrices'):
+        n_regions = len(jacked_masks)
+        for correlation_pair in correlation_pairs:
+            corr_symbol_a = correlation_pair.split('-')[0]
+            corr_symbol_b = correlation_pair.split('-')[1]
+
+            covariance = np.zeros((len(mean_correlations[corr_symbol_a]), len(mean_correlations[corr_symbol_b])))
+            for i in range(covariance.shape[0]):
+                for j in range(covariance.shape[1]):
+                    for k in range(n_regions):
+                        jk_a = jacked_correlations[corr_symbol_a][k]
+                        jk_b = jacked_correlations[corr_symbol_b][k]
+                        m_a = mean_correlations[corr_symbol_a]
+                        m_b = mean_correlations[corr_symbol_b]
+                        covariance[i][j] += (norm_factors[k] * (jk_a[i] - m_a[i]) * (jk_b[j] - m_b[j]))
+
+            self.covariance_matrices['jackknife'][correlation_pair] = covariance
+            transpose_corr_symbol = corr_symbol_b + '-' + corr_symbol_a
+            self.covariance_matrices['jackknife'][transpose_corr_symbol] = np.transpose(covariance)
+
+            if corr_symbol_a == corr_symbol_b:
+                self.correlation_matrices['jackknife'][correlation_pair] = get_correlation_matrix(covariance)
+
+    def set_gauss_covariance(self):
+        correlation_pairs = get_pairs(self.correlation_symbols, join_with='-')
+        for correlation_pair in correlation_pairs:
             a1 = correlation_pair[0]
             a2 = correlation_pair[1]
             b1 = correlation_pair[3]
@@ -304,7 +360,7 @@ class Experiment:
                 self.fields[a1], self.fields[a2], self.fields[b1], self.fields[b2]
             )
 
-            self.covariance_matrices[correlation_pair] = nmt.gaussian_covariance(
+            self.covariance_matrices['gauss'][correlation_pair] = nmt.gaussian_covariance(
                 covariance_workspace,
                 0, 0, 0, 0,
                 [self.theory_correlations[''.join(sorted([a1, b1]))]],
@@ -316,11 +372,12 @@ class Experiment:
             )
 
             transpose_corr_symbol = b1 + b2 + '-' + a1 + a2
-            self.covariance_matrices[transpose_corr_symbol] = np.transpose(self.covariance_matrices[correlation_pair])
+            self.covariance_matrices['gauss'][transpose_corr_symbol] = np.transpose(
+                self.covariance_matrices['gauss'][correlation_pair])
 
             if a1 + a2 == b1 + b2:
-                self.correlation_matrices[correlation_pair] = get_correlation_matrix(
-                    self.covariance_matrices[correlation_pair])
+                self.correlation_matrices['gauss'][correlation_pair] = get_correlation_matrix(
+                    self.covariance_matrices['gauss'][correlation_pair])
 
     def set_data_vector(self):
         data_vectors = []
@@ -339,36 +396,21 @@ class Experiment:
             self.data_correlations[correlation_symbol] = correlations_df['Cl_{}'.format(correlation_symbol)]
             self.noise_decoupled[correlation_symbol] = correlations_df['nl_{}'.format(correlation_symbol)]
             self.noise_curves[correlation_symbol] = correlations_df['nl_{}_mean'.format(correlation_symbol)][0]
-            self.errors[correlation_symbol] = correlations_df['error_{}'.format(correlation_symbol)]
+            for error_method in ['gauss', 'jackknife']:
+                self.errors[error_method][correlation_symbol] = \
+                    correlations_df['error_{}_{}'.format(correlation_symbol, error_method)]
             if 'nl_{}_multicomp'.format(correlation_symbol) in correlations_df:
                 self.multicomp_noise = correlations_df['nl_{}_multicomp'.format(correlation_symbol)]
-                self.multicomp_noise_err = correlations_df['nl_{}_multicomp_err'.format(correlation_symbol)]
-                self.raw_errors[correlation_symbol] = correlations_df['error_{}_raw'.format(correlation_symbol)]
+                for error_method in ['gauss', 'jackknife']:
+                    self.raw_errors['gauss'][correlation_symbol] = \
+                        correlations_df['error_{}_{}_raw'.format(correlation_symbol, error_method)]
+                    self.multicomp_noise_err = \
+                        correlations_df['error_nl_multicomp_{}_{}'.format(correlation_symbol, error_method)]
 
     def set_data_correlations(self):
-        # Get fields
-        for map_symbol in self.map_symbols:
-            self.fields[map_symbol] = nmt.NmtField(self.masks[map_symbol], [self.processed_maps[map_symbol]])
-
-        # Get all correlations
-        for correlation_symbol in tqdm(self.correlation_symbols, desc='data correlations'):
-            map_symbol_a = correlation_symbol[0]
-            map_symbol_b = correlation_symbol[1]
-            self.data_correlations[correlation_symbol], self.workspaces[correlation_symbol] = compute_master(
-                self.fields[map_symbol_a], self.fields[map_symbol_b], self.binnings[correlation_symbol])
-
-        # Decouple noise curves
-        keys = self.noise_curves.keys()
-        for correlation_symbol in keys:
-            if isinstance(self.noise_curves[correlation_symbol], np.ndarray) and correlation_symbol in self.workspaces:
-                if correlation_symbol == 'gg':
-                    noise_decoupled = self.workspaces[correlation_symbol].decouple_cell(
-                        [self.noise_curves[correlation_symbol]])[0]
-                    self.noise_decoupled[correlation_symbol] = noise_decoupled
-                    self.noise_curves[correlation_symbol] = np.mean(noise_decoupled)
-                else:
-                    self.noise_decoupled[correlation_symbol] = decouple_correlation(
-                        self.workspaces[correlation_symbol], self.noise_curves[correlation_symbol])
+        self.fields, self.workspaces, self.data_correlations, self.noise_curves, self.noise_decoupled = \
+            get_correlations(self.map_symbols, self.masks, self.processed_maps, self.correlation_symbols, self.binnings,
+                             self.noise_curves, self.noise_decoupled)
 
         # Scale auto-correlations for LoTSS DR2 non-optical data
         # TODO: what about scaling gg in case of gt? is it needed? probably not

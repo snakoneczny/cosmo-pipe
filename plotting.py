@@ -98,18 +98,19 @@ def plot_many_data_correlations(experiment_dict, correlation_symbol, x_min=0, x_
 
 
 def plot_correlation(experiment, correlation_symbol, x_min=0, x_max=None, y_min=None, y_max=None, x_scale='linear',
-                     y_scale='linear', title=None, with_error=True, is_raw=False):
+                     y_scale='linear', title=None, with_error=True, is_raw=False, error_method='gauss'):
     # Data error bars
     y_err = None
-    if with_error and correlation_symbol in experiment.errors:
-        y_err = experiment.errors[correlation_symbol] if not is_raw else experiment.raw_errors[correlation_symbol]
+    if with_error and correlation_symbol in experiment.errors[error_method]:
+        y_err = experiment.errors[error_method][correlation_symbol] if not is_raw else \
+        experiment.raw_errors[error_method][correlation_symbol]
 
     # Data
     if correlation_symbol in experiment.data_correlations:
         ell_arr = experiment.binnings[correlation_symbol].get_effective_ells()
         noise = experiment.noise_decoupled[correlation_symbol]
         if is_raw:
-            noise -= experiment.multicomp_noise
+            noise = noise - experiment.multicomp_noise
         correlation_dict = experiment.data_correlations
         data_to_plot = correlation_dict[correlation_symbol] - noise
         plt.errorbar(ell_arr, data_to_plot, yerr=y_err, fmt='ob', label='data', markersize=2)
@@ -175,6 +176,51 @@ def pretty_print_corr_symbol(correlation_symbol):
     symbol_a = correlation_symbol[0]
     symbol_b = correlation_symbol[1]
     return r'${} \times {}$'.format(math_symbols[symbol_a], math_symbols[symbol_b])
+
+
+# TODO: regions should be just positive values
+def plot_jackknife_regions(experiment, regions):
+    hp.visufunc.cartview(map=experiment.masks['g'], xsize=1000, badcolor='gray', bgcolor='white', cbar=False, norm=None,
+                         cmap='viridis')
+    fig = plt.gcf()
+    ax = plt.gca()
+    image = ax.get_images()[0]
+    fig.colorbar(image, orientation='horizontal', aspect=40, pad=0.08, ax=ax)
+
+    for region in regions:
+        lon = region['lon']
+        lat = region['lat']
+        # direction = region['dir']
+
+        # if direction == 'left':
+        #     lon = [l if l < 180 else l - 360 for l in lon]
+
+        # Create arrays of line anchors
+        lon_arr = np.append(np.arange(lon[0], lon[1], (lon[1] - lon[0]) / lon[2]), lon[1])
+        lat_arr = np.append(np.arange(lat[0], lat[1], (lat[1] - lat[0]) / lat[2]), lat[1])
+
+        # if direction == 'right':
+        lon_arr = [lon if lon < 180 else lon - 360 for lon in lon_arr]
+
+        # Plot lonigtude lines
+        lat_range = np.arange(lat_arr[0], lat_arr[-1])
+        for lon in lon_arr:
+            plt.plot([lon] * len(lat_range), lat_range, 'b')
+
+        # Plot latitude lines
+        lon = region['lon']
+        # if direction == 'left':
+        #     lon = [l if l < 180 else l - 360 for l in lon]
+
+        lon_range = np.append(np.arange(lon[0], lon[1], (lon[1] - lon[0]) / 100), lon[1])
+
+        # TODO: additional if on right transformation missing here
+        lon_range_a = [lon for lon in lon_range if lon < 180]
+        lon_range_b = [lon - 360 for lon in lon_range if lon > 180]
+
+        for lat in lat_arr:
+            plt.plot(lon_range_a, [lat] * len(lon_range_a), 'b')
+            plt.plot(lon_range_b, [lat] * len(lon_range_b), 'b')
 
 
 def my_mollview(map, fwhm=0, unit=None, cmap='jet', zoom=False, rot=None):

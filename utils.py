@@ -1,6 +1,7 @@
 import logging
 import math
 import os
+import copy
 
 import numpy as np
 from astropy.table import Table
@@ -79,19 +80,56 @@ def get_corr_mean_diff(corr_a, corr_b, bin_range):
     a_cl = corr_a['Cl_gg'] - corr_a['nl_gg']
     b_cl = corr_b['Cl_gg'] - corr_b['nl_gg']
 
-    # Get difference on each bin with error
+    # Get mean difference on each bin of interest
     diff = a_cl - b_cl
-    diff_err = np.sqrt(corr_a['error_gg'] ** 2 + corr_b['error_gg'] ** 2)
-
-    # Limit to bins of interest
     diff = diff[bin_range[0]:bin_range[1]]
-    diff_err = diff_err[bin_range[0]:bin_range[1]]
-
-    # Get mean value with error
     diff_mean = diff.mean()
-    diff_mean_err = np.sqrt(np.sum(diff_err ** 2)) / len(diff)
+
+    # Get mean error on each bin of interest
+    diff_mean_err = {}
+    for error_method in ['gauss', 'jackknife']:
+        err_a = corr_a['error_gg_{}'.format(error_method)]
+        err_b = corr_b['error_gg_{}'.format(error_method)]
+        diff_err = np.sqrt(err_a ** 2 + err_b ** 2)
+        diff_err = diff_err[bin_range[0]:bin_range[1]]
+        diff_mean_err[error_method] = np.sqrt(np.sum(diff_err ** 2)) / len(diff)
 
     return diff_mean, diff_mean_err
+
+
+def get_correlations(map_symbols, masks, maps, correlation_symbols, binnings, noise_curves=None, noise_decoupled=None):
+    fields = {}
+    workspaces = {}
+    correlations = {}
+    noise_curves = copy.deepcopy(noise_curves)
+    noise_decoupled = copy.deepcopy(noise_decoupled)
+
+    # Get fields
+    for map_symbol in map_symbols:
+        fields[map_symbol] = nmt.NmtField(masks[map_symbol], [maps[map_symbol]])
+
+    # Get all correlations
+    for correlation_symbol in correlation_symbols:
+        map_symbol_a = correlation_symbol[0]
+        map_symbol_b = correlation_symbol[1]
+        correlations[correlation_symbol], workspaces[correlation_symbol] = compute_master(
+            fields[map_symbol_a], fields[map_symbol_b], binnings[correlation_symbol])
+
+    # Decouple noise curves
+    if noise_curves is not None:
+        keys = noise_curves.keys()
+        for correlation_symbol in keys:
+            if isinstance(noise_curves[correlation_symbol], np.ndarray) and correlation_symbol in workspaces:
+                if correlation_symbol == 'gg':
+                    noise = workspaces[correlation_symbol].decouple_cell(
+                        [noise_curves[correlation_symbol]])[0]
+                    noise_decoupled[correlation_symbol] = noise
+                    noise_curves[correlation_symbol] = np.mean(noise)
+                else:
+                    noise_decoupled[correlation_symbol] = decouple_correlation(
+                        workspaces[correlation_symbol], noise_curves[correlation_symbol])
+
+    return fields, workspaces, correlations, noise_curves, noise_decoupled
 
 
 def decouple_correlation(workspace, spectrum):
@@ -137,6 +175,39 @@ def get_normalized_dist(data, n_bins=1000, with_print=False):
     assert integral_error < 0.1, 'Integral error equals {:.4f}'.format(integral_error)
 
     return x_arr, proba_arr, dx
+
+
+def get_jackknife_masks(mask, regions, nside):
+    jacked_masks = []
+
+    for region in regions:
+        lon = region['lon']
+        lat = region['lat']
+        # TODO: make array of tuples (lon_min, lon_max)
+        lon_arr = np.append(np.arange(lon[0], lon[1], (lon[1] - lon[0]) / lon[2]), lon[1])
+        lat_arr = np.append(np.arange(lat[0], lat[1], (lat[1] - lat[0]) / lat[2]), lat[1])
+
+        # Iterate through all regions to remove
+        for i_lon in range(len(lon_arr) - 1):
+            for i_lat in range(len(lat_arr) - 1):
+                new_mask = copy.copy(mask)
+
+                # Zero out pixels in the regions to remove
+                lon_min = lon_arr[i_lon]
+                lon_max = lon_arr[i_lon + 1]
+                lat_min = lat_arr[i_lat]
+                lat_max = lat_arr[i_lat + 1]
+
+                a = hp.pixelfunc.ang2vec(lon_min, lat_min, lonlat=True)
+                b = hp.pixelfunc.ang2vec(lon_min, lat_max, lonlat=True)
+                c = hp.pixelfunc.ang2vec(lon_max, lat_max, lonlat=True)
+                d = hp.pixelfunc.ang2vec(lon_max, lat_min, lonlat=True)
+
+                indices = hp.query_polygon(nside=nside, vertices=[a, b, c, d], inclusive=False)
+                new_mask.mask[indices] = True
+
+                jacked_masks.append(new_mask)
+    return jacked_masks
 
 
 def merge_mask_with_weights(mask, weights, min_weight=0.5):
@@ -252,17 +323,25 @@ def save_correlations(experiment):
     experiment_name = get_correlations_filename(experiment)
     file_path = os.path.join(
         PROJECT_PATH, 'outputs/correlations/{}/{}.csv'.format(experiment.config.lss_survey_name, experiment_name))
+
     df = pd.DataFrame()
     for correlation_symbol in experiment.correlation_symbols:
         df['l'] = experiment.binnings[correlation_symbol].get_effective_ells()
         df['Cl_{}'.format(correlation_symbol)] = experiment.data_correlations[correlation_symbol]
-        if correlation_symbol in experiment.raw_errors:
-            df['error_{}_raw'.format(correlation_symbol)] = experiment.raw_errors[correlation_symbol]
-            df['nl_{}_multicomp'.format(correlation_symbol)] = experiment.multicomp_noise
-            df['nl_{}_multicomp_err'.format(correlation_symbol)] = experiment.multicomp_noise_err
         df['nl_{}'.format(correlation_symbol)] = experiment.noise_decoupled[correlation_symbol]
         df['nl_{}_mean'.format(correlation_symbol)] = experiment.noise_curves[correlation_symbol]
-        df['error_{}'.format(correlation_symbol)] = experiment.errors[correlation_symbol]
+        for error_method in ['gauss', 'jackknife']:
+            df['error_{}_{}'.format(correlation_symbol, error_method)] = \
+                experiment.errors[error_method][correlation_symbol]
+
+        if correlation_symbol in experiment.raw_errors:
+            df['nl_{}_multicomp'.format(correlation_symbol)] = experiment.multicomp_noise
+            for error_method in ['gauss', 'jackknife']:
+                df['error_{}_{}_raw'.format(correlation_symbol, error_method)] = \
+                    experiment.raw_errors[error_method][correlation_symbol]
+                df['error_nl_multicomp_{}_{}'.format(correlation_symbol, error_method)] = \
+                    experiment.multicomp_noise_err[error_method]
+
     df.to_csv(file_path, index=False)
     print('Correlations saved to: {}'.format(file_path))
 

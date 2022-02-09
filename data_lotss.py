@@ -12,6 +12,12 @@ import pandas as pd
 from env_config import DATA_PATH
 from utils import get_map, get_masked_map, get_aggregated_map, read_fits_to_pandas
 
+# (8, 4) 32 in total, (4, 2) 16 in total
+LOTSS_JACKKNIFE_REGIONS = [
+    {'lon': (113, 260, 8), 'lat': (25, 68, 3)},
+    {'lon': (37, -25, 4), 'lat': (19, 40, 2)},
+]
+
 
 # TODO: refactor, shorten, split into more functions (?)
 def get_redshift_distributions(data_optical, data_skads):
@@ -129,10 +135,6 @@ def get_redshift_distributions(data_optical, data_skads):
     return redshift_distributions
 
 
-def get_biggest_optical_region(data):
-    return data.loc[((data['RA'] < 33) | (data['RA'] > 360 - 29)) & (18 < data['DEC']) & (data['DEC'] < 35)]
-
-
 def get_lotss_redshift_distribution(z_tail=None, z_sfg=None, a=None, r=None, n=None, flux_cut=None, model='power_law',
                                     z_max=6, z_arr=None, normalize=True):
     if model == 'deep_fields':
@@ -171,6 +173,10 @@ def get_lotss_redshift_distribution(z_tail=None, z_sfg=None, a=None, r=None, n=N
             n_arr /= area
 
     return z_arr, n_arr
+
+
+def get_biggest_optical_region(data):
+    return data.loc[((data['RA'] < 33) | (data['RA'] > 360 - 29)) & (18 < data['DEC']) & (data['DEC'] < 35)]
 
 
 def read_lotss_noise_weight_map(nside, data_release, flux_min_cut, signal_to_noise):
@@ -290,16 +296,22 @@ def get_lotss_map(lotss_data, data_release, mask_filename=None, nside=2048, cut_
 
 
 def get_lotss_dr2_mask(nside, filename=None):
-    filename = 'Mask_default' if filename is None else filename
+    # Get inner regions as base mask
+    # TODO: WTF? WTF? WTF?!
+    # hp.read_map(os.path.join(DATA_PATH, 'LoTSS/DR2/masks/mask_inner/mask_inner_nside={}.fits'.format(nside)))
+    mask = get_dr2_inner_regions(nside)
+
     masks_in_files = [
         'mask_coverage', 'mask_default', 'mask_noise_75percent', 'mask_noise_99_percent', 'mask_noise_median']
+    mask_b = 1
     if filename in masks_in_files:
-        mask = hp.read_map(os.path.join(DATA_PATH, 'LoTSS/DR2/masks/{}.fits'.format(filename)))
-        mask = hp.ud_grade(mask, nside)
+        mask_b = hp.read_map(os.path.join(DATA_PATH, 'LoTSS/DR2/masks/{}.fits'.format(filename)))
+        mask_b = hp.ud_grade(mask_b, nside)
+
     elif filename == 'mask_optical':
-        mask = get_dr2_optical_region(nside)
-    else:
-        raise Exception('Mask doesn\'t exist: {}'.format(filename))
+        mask_b = get_dr2_optical_region(nside)
+
+    mask *= mask_b
 
     # TODO: delete
     # mask = get_lotss_dr1_mask(nside)
@@ -334,6 +346,50 @@ def get_lotss_dr2_mask(nside, filename=None):
     return mask
 
 
+def get_dr2_inner_regions(nside):
+    mask = np.zeros(hp.nside2npix(nside))
+
+    for i in tqdm(range(len(mask))):
+        lon, lat = hp.pixelfunc.pix2ang(nside=nside, ipix=i, nest=False, lonlat=True)
+        if (
+                (0 < lon < 37 and 25 < lat < 40) or
+                (0 < lon < 32 and 19 < lat < 25) or
+                (113 < lon < 125 and 30 < lat < 39) or
+                (125 < lon < 250 and 30 < lat < 68) or
+                (193 < lon < 208 and 25 < lat < 30) or
+                (250 < lon < 260 and 30 < lat < 45) or
+                (335 < lon < 360 and 19 < lat < 35)
+        ):
+            mask[i] = 1
+
+    # regions = [
+    #     ((0, 37), (25, 40)),
+    #     ((0, 32), (19, 25)),
+    #     ((113, 125), (30, 39)),
+    #     ((125, 250), (30, 68)),
+    #     ((193, 208), (25, 30)),
+    #     ((250, 260), (30, 45)),
+    #     ((335, 360), (19, 35)),
+    # ]
+    #
+    # for region in regions:
+    #     lon_min = region[0][0]
+    #     lon_max = region[0][1]
+    #     lat_min = region[1][0]
+    #     lat_max = region[1][1]
+    #
+    #     a = hp.pixelfunc.ang2vec(lon_min, lat_min, lonlat=True)
+    #     b = hp.pixelfunc.ang2vec(lon_min, lat_max, lonlat=True)
+    #     c = hp.pixelfunc.ang2vec(lon_max, lat_max, lonlat=True)
+    #     d = hp.pixelfunc.ang2vec(lon_max, lat_min, lonlat=True)
+    #
+    #     indices = hp.query_polygon(nside=nside, vertices=[a, b, c, d], inclusive=False)
+    #     mask[indices] = 1
+
+    return mask
+
+
+# TODO: save to files at higher nside also
 def get_dr2_optical_region(nside):
     mask = np.zeros(hp.pixelfunc.nside2npix(nside))
     for i in range(len(mask)):
