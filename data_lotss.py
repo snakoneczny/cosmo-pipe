@@ -10,12 +10,12 @@ from tqdm import tqdm
 import pandas as pd
 
 from env_config import DATA_PATH
-from utils import get_map, get_masked_map, get_aggregated_map, read_fits_to_pandas
+from utils import get_map, read_fits_to_pandas
 
 # (8, 4) 32 in total, (4, 2) 16 in total
 LOTSS_JACKKNIFE_REGIONS = [
-    {'lon': (113, 260, 8), 'lat': (25, 68, 3)},
-    {'lon': (37, -25, 4), 'lat': (19, 40, 2)},
+    {'lon': (113, 260, 11), 'lat': (25, 68, 4)},
+    {'lon': (37, -25, 5), 'lat': (19, 40, 2)},
 ]
 
 
@@ -259,7 +259,7 @@ def flux_151_to_144(s_151):
     return s_144
 
 
-def get_lotss_map(lotss_data, data_release, mask_filename=None, nside=2048, cut_pixels=False, masked=True):
+def get_lotss_map(lotss_data, data_release, flux_min_cut, signal_to_noise, mask_filename=None, nside=2048, masked=True):
     counts_map = get_map(lotss_data['RA'].values, lotss_data['DEC'].values, nside=nside)
     if masked:
         if data_release == 1:
@@ -271,28 +271,26 @@ def get_lotss_map(lotss_data, data_release, mask_filename=None, nside=2048, cut_
     else:
         mask = None
 
+    weight_map = read_lotss_noise_weight_map(nside, data_release, flux_min_cut, signal_to_noise)
+
     # Get noise in larger bins
-    noise_map = get_aggregated_map(lotss_data['RA'].values, lotss_data['DEC'].values,
-                                   lotss_data['Isl_rms'].values, nside=256, aggregation='mean')
+    # noise_map = get_aggregated_map(lotss_data['RA'].values, lotss_data['DEC'].values,
+    #                                lotss_data['Isl_rms'].values, nside=256, aggregation='mean')
 
     # Cut artificially high count pixels
-    if cut_pixels:
-        indices_max = np.argsort(counts_map)[::-1]
-        pix_size = hp.pixelfunc.nside2resol(512)
-        for ipix in indices_max:
-            if counts_map[ipix] > 11:
-                vec = hp.pixelfunc.pix2vec(nside, ipix)
-                radius = pix_size * 2
-                indices = hp.query_disc(nside, vec, radius)
-                mask[indices] = 0
-            else:
-                break
+    # if cut_pixels:
+    #     indices_max = np.argsort(counts_map)[::-1]
+    #     pix_size = hp.pixelfunc.nside2resol(512)
+    #     for ipix in indices_max:
+    #         if counts_map[ipix] > 11:
+    #             vec = hp.pixelfunc.pix2vec(nside, ipix)
+    #             radius = pix_size * 2
+    #             indices = hp.query_disc(nside, vec, radius)
+    #             mask[indices] = 0
+    #         else:
+    #             break
 
-    if masked:
-        noise_map = get_masked_map(noise_map, hp.ud_grade(mask, nside_out=256))
-        counts_map = get_masked_map(counts_map, mask)
-
-    return counts_map, mask, noise_map
+    return counts_map, mask, weight_map
 
 
 def get_lotss_dr2_mask(nside, filename=None):

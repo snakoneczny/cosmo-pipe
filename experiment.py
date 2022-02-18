@@ -17,11 +17,10 @@ from tqdm.notebook import tqdm
 from IPython.display import display, Math
 
 from env_config import PROJECT_PATH
-from utils import logger, get_shot_noise, get_overdensity_map, get_pairs, get_correlation_matrix, \
-    get_redshift_distribution, ISWTracer, get_chi_squared, decouple_correlation, merge_mask_with_weights, \
-    read_correlations, get_corr_mean_diff, get_correlations, get_jackknife_masks
-from data_lotss import get_lotss_data, get_lotss_map, get_lotss_redshift_distribution, read_lotss_noise_weight_map, \
-    LOTSS_JACKKNIFE_REGIONS
+from utils import logger, get_shot_noise, process_to_overdensity_map, get_pairs, get_correlation_matrix, \
+    get_redshift_distribution, ISWTracer, get_chi_squared, decouple_correlation, read_correlations, \
+    get_corr_mean_diff, get_correlations, get_jackknife_masks, add_mask
+from data_lotss import get_lotss_data, get_lotss_map, get_lotss_redshift_distribution, LOTSS_JACKKNIFE_REGIONS
 from data_nvss import get_nvss_map, get_nvss_redshift_distribution
 from data_kids_qso import get_kids_qsos, get_kids_qso_map
 from data_cmb import get_cmb_lensing_map, get_cmb_lensing_noise, get_cmb_temperature_map, \
@@ -38,7 +37,6 @@ class Experiment:
         self.map_symbols = []
         self.data = {}
         self.base_maps = {}
-        self.noise_maps = {}
         self.weight_maps = {}
         self.processed_maps = {}
         self.masks = {}
@@ -46,6 +44,7 @@ class Experiment:
         self.noise_decoupled = defaultdict(int)
         self.multicomp_noise = None
         self.multicomp_noise_err = {}
+        self.get_galaxy_map_function = None
 
         # Correlation containers
         self.z_arr = []
@@ -297,27 +296,48 @@ class Experiment:
         self.inverted_covariance = np.linalg.inv(self.inference_covariance)
 
     def set_jackknife_covariance(self):
-        jacked_masks = get_jackknife_masks(self.masks['g'], LOTSS_JACKKNIFE_REGIONS, nside=self.config.nside)
-        jacked_correlations = dict([(corr_symbol, []) for corr_symbol in self.correlation_symbols])
-
-        original_mask_size = self.masks['g'].nonzero()[0].shape[0]
+        # TODO: initialize rather than copy, or not use dict at all, its just g that we care here
+        # First stage of setting maps
+        base_maps = deepcopy(self.base_maps)
         masks = deepcopy(self.masks)
+        weight_maps = deepcopy(self.weight_maps)
         processed_maps = deepcopy(self.processed_maps)
+        base_maps['g'], masks['g'], weight_maps['g'] = self.get_galaxy_map_function()
+        # TODO: weight map changes that
+        original_mask_size = masks['g'].nonzero()[0].shape[0]
+
+        # Get jackknife regions
+        jacked_masks = get_jackknife_masks(masks['g'], LOTSS_JACKKNIFE_REGIONS, nside=self.config.nside)
+        jacked_correlations = dict([(corr_symbol, []) for corr_symbol in self.correlation_symbols])
+        jacked_noise = dict([(corr_symbol, []) for corr_symbol in self.correlation_symbols])
+        n_regions = len(jacked_masks)
+
         norm_factors = []
         for jacked_mask in tqdm(jacked_masks):
-            masks['g'] = jacked_mask
-            processed_maps['g'] = get_overdensity_map(self.base_maps['g'], jacked_mask)
+            # TODO: affected by weight map
+            jacked_mask_size = jacked_mask.nonzero()[0].shape[0]
+
+            # Second stage of setting maps, with a jacked mask
+            jk_base_maps = deepcopy(base_maps)
+            jk_masks = deepcopy(masks)
+            jk_weight_maps = deepcopy(weight_maps)
+            jk_processed_maps = deepcopy(processed_maps)
+            noise_curves = defaultdict(int)
+            noise_decoupled = defaultdict(int)
+            jk_base_maps['g'], jk_masks['g'], jk_weight_maps['g'], jk_processed_maps['g'], noise_curves[
+                'gg'] = process_to_overdensity_map(base_maps['g'], jacked_mask, weight_maps['g'])
 
             # Calculate all relevant correlations
-            _, _, correlations, _, _ = \
-                get_correlations(self.map_symbols, masks, processed_maps, self.correlation_symbols, self.binnings)
+            _, _, correlations, _, noise_decoupled = get_correlations(
+                self.map_symbols, jk_masks, jk_processed_maps, self.correlation_symbols, self.binnings, noise_curves,
+                noise_decoupled)
 
             # Add new correlation
             for corr_symbol in correlations:
-                jacked_correlations[corr_symbol].append(correlations[corr_symbol])
+                jacked_correlations[corr_symbol].append(correlations[corr_symbol] - noise_decoupled[corr_symbol])
+                jacked_noise[corr_symbol].append(noise_decoupled[corr_symbol])
 
             # Dependence normalizing factor
-            jacked_mask_size = jacked_mask.nonzero()[0].shape[0]
             norm_factors.append(jacked_mask_size / original_mask_size)
 
         mean_correlations = dict(
@@ -325,10 +345,12 @@ class Experiment:
 
         # Calculate covariances
         correlation_pairs = get_pairs(self.correlation_symbols, join_with='-')
-        n_regions = len(jacked_masks)
         for correlation_pair in correlation_pairs:
             corr_symbol_a = correlation_pair.split('-')[0]
             corr_symbol_b = correlation_pair.split('-')[1]
+
+            m_a = mean_correlations[corr_symbol_a]
+            m_b = mean_correlations[corr_symbol_b]
 
             covariance = np.zeros((len(mean_correlations[corr_symbol_a]), len(mean_correlations[corr_symbol_b])))
             for i in range(covariance.shape[0]):
@@ -336,9 +358,8 @@ class Experiment:
                     for k in range(n_regions):
                         jk_a = jacked_correlations[corr_symbol_a][k]
                         jk_b = jacked_correlations[corr_symbol_b][k]
-                        m_a = mean_correlations[corr_symbol_a]
-                        m_b = mean_correlations[corr_symbol_b]
-                        covariance[i][j] += (norm_factors[k] * (jk_a[i] - m_a[i]) * (jk_b[j] - m_b[j]))
+                        to_add = (norm_factors[k] * (jk_a[i] - m_a[i]) * (jk_b[j] - m_b[j]))
+                        covariance[i][j] += to_add
 
             self.covariance_matrices['jackknife'][correlation_pair] = covariance
             transpose_corr_symbol = corr_symbol_b + '-' + corr_symbol_a
@@ -534,18 +555,20 @@ class Experiment:
 
     def set_maps(self):
         logger.info('Setting maps..')
-        set_map_functions = {
-            'LoTSS_DR2': partial(self.set_lotss_maps, data_release=2),
-            'LoTSS_DR1': partial(self.set_lotss_maps, data_release=1),
-            'NVSS': self.set_nvss_maps,
-            'KiDS_QSO': self.set_kids_qso_maps,
+        get_map_functions = {
+            'LoTSS_DR2': partial(self.get_lotss_maps, data_release=2),
+            'LoTSS_DR1': partial(self.get_lotss_maps, data_release=1),
+            'NVSS': self.get_nvss_maps,
+            'KiDS_QSO': self.get_kids_qso_maps,
         }
+        self.get_galaxy_map_function = get_map_functions[self.config.lss_survey_name]
 
         if 'g' in self.map_symbols:
-            set_map_functions[self.config.lss_survey_name]()
-            self.processed_maps['g'] = get_overdensity_map(self.base_maps['g'], self.masks['g'])
-            self.noise_curves['gg'] = np.full(3 * self.config.nside,
-                                              get_shot_noise(self.base_maps['g'], self.masks['g']))
+            # First stage of setting galaxy maps
+            self.base_maps['g'], self.masks['g'], self.weight_maps['g'] = self.get_galaxy_map_function()
+            # Second stage of setting galaxy maps
+            self.base_maps['g'], self.masks['g'], self.weight_maps['g'], self.processed_maps['g'], self.noise_curves[
+                'gg'] = process_to_overdensity_map(self.base_maps['g'], self.masks['g'], self.weight_maps['g'])
 
         if 'k' in self.map_symbols:
             self.base_maps['k'], self.masks['k'] = get_cmb_lensing_map(self.config.nside)
@@ -560,22 +583,20 @@ class Experiment:
 
         self.are_maps_ready = True
 
-    def set_lotss_maps(self, data_release=2):
+    def get_lotss_maps(self, data_release=2):
         mask_filename = None if data_release == 1 else self.config.lss_mask_name
-        self.base_maps['g'], self.masks['g'], self.noise_maps['g'] = get_lotss_map(
-            self.data['g'], data_release=data_release, mask_filename=mask_filename, nside=self.config.nside,
-        )
+        coutns_map, mask, weight_map = get_lotss_map(self.data['g'], data_release, self.config.flux_min_cut,
+                                                     self.config.signal_to_noise, mask_filename=mask_filename,
+                                                     nside=self.config.nside)
+        return coutns_map, mask, weight_map
 
-        # Probability mask
-        self.weight_maps['g'] = read_lotss_noise_weight_map(self.config.nside, data_release, self.config.flux_min_cut,
-                                                            self.config.signal_to_noise)
-        self.masks['g'] = merge_mask_with_weights(self.masks['g'], self.weight_maps['g'], min_weight=0.5)
+    def get_nvss_maps(self):
+        coutns_map, mask = get_nvss_map(nside=self.config.nside)
+        return coutns_map, mask, None
 
-    def set_nvss_maps(self):
-        self.base_maps['g'], self.masks['g'] = get_nvss_map(nside=self.config.nside)
-
-    def set_kids_qso_maps(self):
-        self.base_maps['g'], self.masks['g'] = get_kids_qso_map(self.data['g'], self.config.nside)
+    def get_kids_qso_maps(self):
+        coutns_map, mask = get_kids_qso_map(self.data['g'], self.config.nside)
+        return coutns_map, mask, None
 
     def set_data(self):
         logger.info('Setting data..')

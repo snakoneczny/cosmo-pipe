@@ -12,9 +12,9 @@ HETDEX_LAT_RANGE = [43, 60]
 
 
 def plot_correlation_comparison(correlations_a, correlations_b, correlation_symbols, correlation_names,
-                                is_raw=[False, False], x_min=0, x_max=None, y_min=None, y_max=None, x_scale='linear',
-                                y_scale='linear',
-                                title=None, with_error=True):
+                                is_raw=[False, False], error_method='gauss', x_min=0, x_max=None, y_min=None,
+                                y_max=None, x_scale='linear',
+                                y_scale='linear', title=None, with_error=True):
     # Data
     ell_arr = correlations_a['l']
     corr_a = correlations_a['Cl_{}'.format(correlation_symbols[0])]
@@ -31,10 +31,17 @@ def plot_correlation_comparison(correlations_a, correlations_b, correlation_symb
         corr_b += correlations_b['nl_{}_multicomp'.format(correlation_symbols[1])]
 
     # Error bars
-    error_a = correlations_a['error_{}'.format(correlation_symbols[0])] if not is_raw[0] else correlations_a[
-        'error_{}_raw'.format(correlation_symbols[0])]
-    error_b = correlations_b['error_{}'.format(correlation_symbols[1])] if not is_raw[1] else correlations_b[
-        'error_{}_raw'.format(correlation_symbols[1])]
+    # error_a = correlations_a['error_{}'.format(correlation_symbols[0])] if not is_raw[0] else correlations_a[
+    #     'error_{}_raw'.format(correlation_symbols[0])]
+    # error_b = correlations_b['error_{}'.format(correlation_symbols[1])] if not is_raw[1] else correlations_b[
+    #     'error_{}_raw'.format(correlation_symbols[1])]
+    error_name_a = 'error_{}_{}'.format(correlation_symbols[0], error_method)
+    error_name_a_raw = error_name_a + 'raw'
+    error_name_b = 'error_{}_{}'.format(correlation_symbols[1], error_method)
+    error_name_b_raw = error_name_b + 'raw'
+
+    error_a = correlations_a[error_name_a_raw] if error_name_a_raw in correlations_a else correlations_a[error_name_a]
+    error_b = correlations_b[error_name_b_raw] if error_name_b_raw in correlations_b else correlations_b[error_name_b]
 
     # Upper plot, two correlation functions
     fig, axs = plt.subplots(2, 1, sharex=True, figsize=(6, 6), gridspec_kw={'height_ratios': [2, 1]})
@@ -104,6 +111,8 @@ def plot_correlation(experiment, correlation_symbol, x_min=0, x_max=None, y_min=
     if with_error and correlation_symbol in experiment.errors[error_method]:
         y_err = experiment.errors[error_method][correlation_symbol] if not is_raw else \
         experiment.raw_errors[error_method][correlation_symbol]
+        # y_err = experiment.raw_errors[error_method][correlation_symbol] if correlation_symbol in experiment.raw_errors[
+        #     error_method] else experiment.errors[error_method][correlation_symbol]
 
     # Data
     if correlation_symbol in experiment.data_correlations:

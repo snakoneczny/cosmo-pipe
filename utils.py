@@ -204,25 +204,34 @@ def get_jackknife_masks(mask, regions, nside):
                 d = hp.pixelfunc.ang2vec(lon_max, lat_min, lonlat=True)
 
                 indices = hp.query_polygon(nside=nside, vertices=[a, b, c, d], inclusive=False)
-                new_mask.mask[indices] = True
+                new_mask[indices] = 0
 
                 jacked_masks.append(new_mask)
     return jacked_masks
 
 
-def merge_mask_with_weights(mask, weights, min_weight=0.5):
-    mask *= weights
-    mask /= mask.max()
-    mask[mask < min_weight] = 0
+def process_to_overdensity_map(counts_map, mask, weight_map=None, nside=2048):
+    # Add weights to mask, and mask pictures below the min weight
+    if weight_map is not None:
+        min_weight = 0.5
+        mask *= weight_map
+        mask /= mask.max()
+        mask[mask < min_weight] = 0
+
+    # Make all the maps masked ones
+    counts_map = get_masked_map(counts_map, mask)
     mask = get_masked_map(mask, mask)
-    return mask
+    weight_map = get_masked_map(weight_map, mask)
 
-
-def get_overdensity_map(counts_map, mask):
+    # Get overdensity map
     sky_mean = counts_map.sum() / mask.sum()
     overdensity_map = counts_map / mask / sky_mean - 1
     overdensity_map = get_masked_map(overdensity_map, mask)
-    return overdensity_map
+
+    # Get shot noise
+    noise_curve = np.full(3 * nside, get_shot_noise(counts_map, mask))
+
+    return counts_map, mask, weight_map, overdensity_map, noise_curve
 
 
 def get_shot_noise(counts_map, mask):
@@ -334,7 +343,7 @@ def save_correlations(experiment):
             df['error_{}_{}'.format(correlation_symbol, error_method)] = \
                 experiment.errors[error_method][correlation_symbol]
 
-        if correlation_symbol in experiment.raw_errors:
+        if correlation_symbol in experiment.raw_errors['gauss']:
             df['nl_{}_multicomp'.format(correlation_symbol)] = experiment.multicomp_noise
             for error_method in ['gauss', 'jackknife']:
                 df['error_{}_{}_raw'.format(correlation_symbol, error_method)] = \
@@ -357,8 +366,8 @@ def read_correlations(filename=None, experiment=None):
 def get_correlations_filename(experiment):
     config = experiment.config
     optical_name = 'opt' if config.is_optical else 'srl'
-    experiment_name = '{}_{}__{}__{}mJy_snr={}_nside={}_gg-gk_bin={}'.format(
+    experiment_name = '{}_{}__{}__{}mJy_snr={}_nside={}_{}_bin={}'.format(
         config.lss_survey_name, optical_name, config.lss_mask_name, config.flux_min_cut, config.signal_to_noise,
-        config.nside, config.ells_per_bin['gg']
+        config.nside, '-'.join(experiment.correlation_symbols), config.ells_per_bin['gg']
     )
     return experiment_name
