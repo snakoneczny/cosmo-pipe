@@ -13,13 +13,13 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import json
 import yaml
-from tqdm.notebook import tqdm
+from tqdm import tqdm
 from IPython.display import display, Math
 
 from env_config import PROJECT_PATH
-from utils import logger, get_shot_noise, process_to_overdensity_map, get_pairs, get_correlation_matrix, \
+from utils import logger, process_to_overdensity_map, get_pairs, get_correlation_matrix, \
     get_redshift_distribution, ISWTracer, get_chi_squared, decouple_correlation, read_correlations, \
-    get_corr_mean_diff, get_correlations, get_jackknife_masks, add_mask
+    get_corr_mean_diff, get_correlations, get_jackknife_masks
 from data_lotss import get_lotss_data, get_lotss_map, get_lotss_redshift_distribution, LOTSS_JACKKNIFE_REGIONS
 from data_nvss import get_nvss_map, get_nvss_redshift_distribution
 from data_kids_qso import get_kids_qsos, get_kids_qso_map
@@ -59,7 +59,6 @@ class Experiment:
         self.binnings = {}
         self.covariance_matrices = defaultdict(dict)
         self.errors = defaultdict(dict)
-        self.raw_errors = defaultdict(dict)
         self.correlation_matrices = defaultdict(dict)
         self.l_arr = None
         self.bin_range = {}
@@ -215,7 +214,7 @@ class Experiment:
         return prior
 
     def set_correlations(self, with_covariance=True):
-        assert self.are_maps_ready or self.config.read_data_correlations_flag
+        # assert self.are_maps_ready or self.config.read_data_correlations_flag
 
         self.set_binning()
 
@@ -231,7 +230,8 @@ class Experiment:
         logger.info('Setting covariance..')
         if not self.config.read_data_correlations_flag and with_covariance:
             self.set_gauss_covariance()
-            self.set_jackknife_covariance()
+            if self.config.with_jackknife:
+                self.set_jackknife_covariance()
             self.set_errors()
             self.set_sigmas()
 
@@ -261,10 +261,6 @@ class Experiment:
                 covariance_symbol = '{c}-{c}'.format(c=correlation_symbol)
                 self.errors[error_method][correlation_symbol] = np.sqrt(
                     np.diag(self.covariance_matrices[error_method][covariance_symbol]))
-            if self.with_multicomp_noise and self.multicomp_noise:
-                self.raw_errors[error_method]['gg'] = self.errors[error_method]['gg'].copy()
-                self.errors[error_method]['gg'] = np.sqrt(
-                    self.raw_errors[error_method]['gg'] ** 2 + self.multicomp_noise_err[error_method] ** 2)
 
     def set_inference_covariance(self):
         total_length = sum(self.n_ells.values())
@@ -413,20 +409,19 @@ class Experiment:
 
     def read_data_correlations(self):
         correlations_df = read_correlations(experiment=self)
+        error_methods = ['gauss', 'jackknife'] if self.config.with_jackknife else ['gauss']
         for correlation_symbol in self.correlation_symbols:
             self.data_correlations[correlation_symbol] = correlations_df['Cl_{}'.format(correlation_symbol)]
             self.noise_decoupled[correlation_symbol] = correlations_df['nl_{}'.format(correlation_symbol)]
             self.noise_curves[correlation_symbol] = correlations_df['nl_{}_mean'.format(correlation_symbol)][0]
-            for error_method in ['gauss', 'jackknife']:
+            for error_method in error_methods:
                 self.errors[error_method][correlation_symbol] = \
                     correlations_df['error_{}_{}'.format(correlation_symbol, error_method)]
             if 'nl_{}_multicomp'.format(correlation_symbol) in correlations_df:
                 self.multicomp_noise = correlations_df['nl_{}_multicomp'.format(correlation_symbol)]
-                for error_method in ['gauss', 'jackknife']:
-                    self.raw_errors['gauss'][correlation_symbol] = \
-                        correlations_df['error_{}_{}_raw'.format(correlation_symbol, error_method)]
+                for error_method in error_methods:
                     self.multicomp_noise_err = \
-                        correlations_df['error_nl_multicomp_{}_{}'.format(correlation_symbol, error_method)]
+                        correlations_df['error_nl_{}_multicomp_{}'.format(correlation_symbol, error_method)]
 
     def set_data_correlations(self):
         self.fields, self.workspaces, self.data_correlations, self.noise_curves, self.noise_decoupled = \
@@ -566,6 +561,7 @@ class Experiment:
         if 'g' in self.map_symbols:
             # First stage of setting galaxy maps
             self.base_maps['g'], self.masks['g'], self.weight_maps['g'] = self.get_galaxy_map_function()
+
             # Second stage of setting galaxy maps
             self.base_maps['g'], self.masks['g'], self.weight_maps['g'], self.processed_maps['g'], self.noise_curves[
                 'gg'] = process_to_overdensity_map(self.base_maps['g'], self.masks['g'], self.weight_maps['g'])

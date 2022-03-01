@@ -74,7 +74,6 @@ def get_chi_squared(data_vector, model_vector, covariance_matrix):
     return diff.dot(inverted_covariance).dot(diff)
 
 
-# Assuming a - b
 def get_corr_mean_diff(corr_a, corr_b, bin_range):
     # Substract the known part of shot noise
     a_cl = corr_a['Cl_gg'] - corr_a['nl_gg']
@@ -87,7 +86,8 @@ def get_corr_mean_diff(corr_a, corr_b, bin_range):
 
     # Get mean error on each bin of interest
     diff_mean_err = {}
-    for error_method in ['gauss', 'jackknife']:
+    error_methods = ['gauss', 'jackknife'] if 'error_gg_jackknife' in corr_a else ['gauss']
+    for error_method in error_methods:
         err_a = corr_a['error_gg_{}'.format(error_method)]
         err_b = corr_b['error_gg_{}'.format(error_method)]
         diff_err = np.sqrt(err_a ** 2 + err_b ** 2)
@@ -213,9 +213,10 @@ def get_jackknife_masks(mask, regions, nside):
 def process_to_overdensity_map(counts_map, mask, weight_map=None, nside=2048):
     # Add weights to mask, and mask pictures below the min weight
     if weight_map is not None:
-        min_weight = 0.5
         mask *= weight_map
         mask /= mask.max()
+        # min_weight = 0.5
+        min_weight = np.percentile(mask[mask > 0], 1)
         mask[mask < min_weight] = 0
 
     # Make all the maps masked ones
@@ -327,11 +328,13 @@ def get_config(config_name):
     return struct(**config)
 
 
+# TODO: Save covariance matrices
 # TODO: move to experiment as static function
 def save_correlations(experiment):
     experiment_name = get_correlations_filename(experiment)
     file_path = os.path.join(
         PROJECT_PATH, 'outputs/correlations/{}/{}.csv'.format(experiment.config.lss_survey_name, experiment_name))
+    error_methods = experiment.covariance_matrices.keys()
 
     df = pd.DataFrame()
     for correlation_symbol in experiment.correlation_symbols:
@@ -339,17 +342,15 @@ def save_correlations(experiment):
         df['Cl_{}'.format(correlation_symbol)] = experiment.data_correlations[correlation_symbol]
         df['nl_{}'.format(correlation_symbol)] = experiment.noise_decoupled[correlation_symbol]
         df['nl_{}_mean'.format(correlation_symbol)] = experiment.noise_curves[correlation_symbol]
-        for error_method in ['gauss', 'jackknife']:
+
+        for error_method in error_methods:
             df['error_{}_{}'.format(correlation_symbol, error_method)] = \
                 experiment.errors[error_method][correlation_symbol]
 
-        if correlation_symbol in experiment.raw_errors['gauss']:
-            df['nl_{}_multicomp'.format(correlation_symbol)] = experiment.multicomp_noise
-            for error_method in ['gauss', 'jackknife']:
-                df['error_{}_{}_raw'.format(correlation_symbol, error_method)] = \
-                    experiment.raw_errors[error_method][correlation_symbol]
-                df['error_nl_multicomp_{}_{}'.format(correlation_symbol, error_method)] = \
-                    experiment.multicomp_noise_err[error_method]
+        if correlation_symbol == 'gg' and experiment.with_multicomp_noise:
+            df['nl_gg_multicomp'] = experiment.multicomp_noise
+            for error_method in error_methods:
+                df['error_nl_gg_multicomp_{}'.format(error_method)] = experiment.multicomp_noise_err[error_method]
 
     df.to_csv(file_path, index=False)
     print('Correlations saved to: {}'.format(file_path))

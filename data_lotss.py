@@ -138,8 +138,10 @@ def get_redshift_distributions(data_optical, data_skads):
 def get_lotss_redshift_distribution(z_tail=None, z_sfg=None, a=None, r=None, n=None, flux_cut=None, model='power_law',
                                     z_max=6, z_arr=None, normalize=True):
     if model == 'deep_fields':
+        # TODO: delete
+        flux_cut_to_use = 2 if flux_cut == 1.5 else flux_cut
         deepfields_file = 'LoTSS/DR2/pz_deepfields/Pz_booterrors_wsum_deepfields_{}mJy.fits'.format(
-            ''.join(str(flux_cut).split('.')))
+            ''.join(str(flux_cut_to_use).split('.')))
         pz_deepfields = read_fits_to_pandas(os.path.join(DATA_PATH, deepfields_file))
         z_arr = pz_deepfields['zbins']
         n_arr = pz_deepfields['pz']
