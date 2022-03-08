@@ -109,9 +109,10 @@ def get_redshift_distributions(data_optical, data_skads):
             z_tail_min = z_tail[flux_cut] + z_tail_limit[flux_cut][0]
             z_tail_max = z_tail[flux_cut] + z_tail_limit[flux_cut][1]
 
-            z_arr, n_arr = get_lotss_redshift_distribution(z_tail=z_tail[flux_cut], model='z_tail', z_max=6)
-            _, n_arr_min = get_lotss_redshift_distribution(z_tail=z_tail_min, model='z_tail', z_max=6)
-            _, n_arr_max = get_lotss_redshift_distribution(z_tail=z_tail_max, model='z_tail', z_max=6)
+            z_arr, n_arr = get_lotss_redshift_distribution(z_tail=z_tail[flux_cut], model='z_tail', z_max=6,
+                                                           normalize=True)
+            _, n_arr_min = get_lotss_redshift_distribution(z_tail=z_tail_min, model='z_tail', z_max=6, normalize=True)
+            _, n_arr_max = get_lotss_redshift_distribution(z_tail=z_tail_max, model='z_tail', z_max=6, normalize=True)
 
             # redshift_distributions[key][flux_cut] = {'z': z_arr, 'pz': n_arr, 'pz_min': n_arr_min, 'pz_max': n_arr_max}
             redshift_distributions[key][flux_cut] = {'z': z_arr, 'pz': n_arr}
@@ -135,8 +136,8 @@ def get_redshift_distributions(data_optical, data_skads):
     return redshift_distributions
 
 
-def get_lotss_redshift_distribution(z_tail=None, z_sfg=None, a=None, r=None, n=None, flux_cut=None, model='power_law',
-                                    z_max=6, z_arr=None, normalize=True):
+def get_lotss_redshift_distribution(z_tail=None, z_sfg=None, a=None, r=None, n=1, flux_cut=None, model='power_law',
+                                    z_max=6, z_arr=None, normalize=False):
     if model == 'deep_fields':
         # TODO: delete
         flux_cut_to_use = 2 if flux_cut == 1.5 else flux_cut
@@ -147,6 +148,7 @@ def get_lotss_redshift_distribution(z_tail=None, z_sfg=None, a=None, r=None, n=N
         n_arr = pz_deepfields['pz']
 
     elif model == 'tomographer':
+        # TODO: update
         tomographer = pd.read_csv(os.path.join(DATA_PATH, 'LoTSS/tomographer/full_maskstrict_I2mJy_q5.csv'))
         z_arr = tomographer['z'][:-1]
         n_arr = tomographer['dNdz_b'][:-1]
@@ -160,9 +162,7 @@ def get_lotss_redshift_distribution(z_tail=None, z_sfg=None, a=None, r=None, n=N
 
         if model == 'power_law':
             # n_arr = (z_arr ** 2) / (1 + z_arr) * (np.exp((-z_arr / z_sfg)) + r * np.exp(-z_arr / z_agn))
-            n_arr = (z_arr ** 2) / (1 + z_arr) * (np.exp((-z_arr / z_sfg)) + r ** 2 / (1 + z_arr) ** a)
-            if n:
-                n_arr *= n
+            n_arr = n * (z_arr ** 2) / (1 + z_arr) * (np.exp((-z_arr / z_sfg)) + r ** 2 / (1 + z_arr) ** a)
         elif model == 'z_tail':
             z_0 = 0.1
             gamma = 3.5
@@ -297,9 +297,9 @@ def get_lotss_map(lotss_data, data_release, flux_min_cut, signal_to_noise, mask_
 
 def get_lotss_dr2_mask(nside, filename=None):
     # Get inner regions as base mask
-    # TODO: WTF? WTF? WTF?!
-    # hp.read_map(os.path.join(DATA_PATH, 'LoTSS/DR2/masks/mask_inner/mask_inner_nside={}.fits'.format(nside)))
-    mask = get_dr2_inner_regions(nside)
+    # mask = get_dr2_inner_regions(nside)
+    mask = hp.read_map(os.path.join(DATA_PATH, 'LoTSS/DR2/masks/mask_inner/mask_inner_nside={}.fits'.format(nside)))
+    mask = mask.astype('float64')
 
     masks_in_files = [
         'mask_coverage', 'mask_default', 'mask_noise_75percent', 'mask_noise_99_percent', 'mask_noise_median']

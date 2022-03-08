@@ -6,20 +6,18 @@ from copy import deepcopy
 from collections import OrderedDict
 
 import numpy as np
+import pandas as pd
 import pymaster as nmt
 import pyccl as ccl
 import emcee
-import seaborn as sns
-import matplotlib.pyplot as plt
 import json
 import yaml
 from tqdm import tqdm
-from IPython.display import display, Math
 
-from env_config import PROJECT_PATH
+from env_config import PROJECT_PATH, DATA_PATH
 from utils import logger, process_to_overdensity_map, get_pairs, get_correlation_matrix, \
-    get_redshift_distribution, ISWTracer, get_chi_squared, decouple_correlation, read_correlations, \
-    get_corr_mean_diff, get_correlations, get_jackknife_masks
+    get_redshift_distribution, get_chi_squared, decouple_correlation, read_correlations, \
+    get_corr_mean_diff, get_correlations, get_jackknife_masks, read_covariances
 from data_lotss import get_lotss_data, get_lotss_map, get_lotss_redshift_distribution, LOTSS_JACKKNIFE_REGIONS
 from data_nvss import get_nvss_map, get_nvss_redshift_distribution
 from data_kids_qso import get_kids_qsos, get_kids_qso_map
@@ -63,6 +61,7 @@ class Experiment:
         self.l_arr = None
         self.bin_range = {}
         self.n_ells = {}
+        self.cosmology = None
 
         # MCMC containers
         self.inference_covariance = None
@@ -74,6 +73,8 @@ class Experiment:
         self.arg_names = None
         self.backend_filename = None
         self.tau_filename = None
+        self.tomographer_z_arr = None
+        self.tomographer_n_arr = None
 
         # Pipeline flags
         self.are_data_ready = False
@@ -89,7 +90,7 @@ class Experiment:
         self.all_correlation_symbols = get_pairs(self.map_symbols)
 
         # Create experiment name
-        self.arg_names = list(config.starting_params.keys())
+        self.arg_names = config.to_infere
         experiment_name_parts = ['-'.join(self.correlation_symbols), '_'.join(self.arg_names)]
         if hasattr(config, 'experiment_tag') and config.experiment_tag is not None and len(config.experiment_tag) > 0:
             experiment_name_parts.append(config.experiment_tag)
@@ -116,7 +117,7 @@ class Experiment:
 
         config_file_path = os.path.join(self.mcmc_folder, '{}.config.json'.format(self.experiment_name))
         with open(config_file_path, 'w') as outfile:
-            json.dump(self.config.get_original_dict(), outfile)
+            json.dump(self.config.__dict__, outfile)
             logger.info('Experiment config saved to: {}'.format(config_file_path))
 
         tau_arr = np.load(self.tau_filename) if (
@@ -134,9 +135,9 @@ class Experiment:
                 converged = np.all(tau * 100 < self.emcee_sampler.iteration)
                 converged &= np.all(tau_change < 0.01)
                 # if not self.emcee_sampler.iteration % 10:
-                logger.info(
-                    'Iteration: {}, tau: {}, tau change: {}'.format(self.emcee_sampler.iteration, np.around(tau, 1),
-                                                                    np.around(tau_change, 3)))
+                # logger.info(
+                #     'Iteration: {}, tau: {}, tau change: {}'.format(self.emcee_sampler.iteration, np.around(tau, 1),
+                #                                                     np.around(tau_change, 3)))
                 if converged:
                     break
 
@@ -156,42 +157,63 @@ class Experiment:
         self.emcee_sampler = emcee.EnsembleSampler(n_walkers, n_dim, self.get_log_prob, backend=backend)
 
     def set_walkers_starting_params(self):
-        p0 = np.array([self.config.starting_params[key][0] for key in self.config.starting_params])
-        p0_scales = np.array([self.config.starting_params[key][1] for key in self.config.starting_params])
+        # TODO: cosmo params, A_sn
+        p0 = np.array([self.config.__dict__[key] for key in self.config.to_infere])
+        p0_scales = p0 * 0.1
         n_dim = len(p0)
         self.p0_walkers = np.array(
             [p0 + p0_scales * np.random.uniform(low=-1, high=1, size=n_dim) for _ in range(self.config.n_walkers)])
 
     def get_log_prob(self, theta):
+        # TODO: uncomment
         # Check the priors
-        log_prior = self.get_log_prior(theta)
-        if not np.isfinite(log_prior):
-            return -np.inf
+        # log_prior = self.get_log_prior(theta)
+        # if not np.isfinite(log_prior):
+        #     return -np.inf
+        log_prior = 0
 
         # Update default cosmological parameters with new sampled parameters
-        cosmo_params = self.cosmology_params.copy()
-        for param_name in self.arg_names:
-            if param_name in cosmo_params:
-                cosmo_params[param_name] = theta[self.arg_names.index(param_name)]
+        # TODO: flag indicating whether cosmology changed
+        # cosmo_params = self.cosmology_params.copy()
+        # for param_name in self.arg_names:
+        #     if param_name in cosmo_params:
+        #         cosmo_params[param_name] = theta[self.arg_names.index(param_name)]
 
-        # TODO: something smart
         # Update data parameters
         config = deepcopy(self.config)
-        config.z_tail = theta[self.arg_names.index('z_tail')] if 'z_tail' in self.arg_names else config.z_tail
-        config.b_0_scaled = theta[
-            self.arg_names.index('b_0_scaled')] if 'b_0_scaled' in self.arg_names else config.b_0_scaled
+        to_update = dict(zip(self.arg_names, theta))
+        config.__dict__.update(to_update)
 
+        # TODO: pass cosmo params
         # Get theory correlations and bin spectra using coupling matrices in workspaces
-        _, _, correlations_dict = self.get_theory_correlations(config, cosmo_params, ['gg', 'gk'])
+        try:
+            _, _, correlations_dict = self.get_theory_correlations(config, cosmology_params=None,
+                                                                   correlation_symbols=self.correlation_symbols)
+        except:
+            return -np.inf
+
         model_correlations = []
         for correlation_symbol in self.correlation_symbols:
             correlation = decouple_correlation(self.workspaces[correlation_symbol],
                                                correlations_dict[correlation_symbol])
+
+            if (correlation_symbol == 'gg') and ('A_sn' in self.arg_names):
+                correlation += ((config.A_sn - 1) * self.noise_decoupled['gg'])
+
             bin_range = self.bin_range[correlation_symbol]
             model_correlations.append(correlation[bin_range[0]:bin_range[1]])
         model_correlations = np.concatenate(model_correlations)
 
+        if self.config.fit_tomographer:
+            # TODO: refactor
+            _, n_arr = get_lotss_redshift_distribution(
+                z_sfg=getattr(config, 'z_sfg', None), a=getattr(config, 'a', None), r=getattr(config, 'r', None),
+                n=getattr(config, 'n', None), z_tail=getattr(config, 'z_tail', None), z_arr=self.tomographer_z_arr,
+                flux_cut=getattr(config, 'flux_min_cut', None), model=config.dn_dz_model, normalize=False)
+            model_correlations = np.append(model_correlations, n_arr)
+
         # Calculate log prob
+        # diff = self.data_vector - model_correlations
         diff = self.data_vector - model_correlations
         log_prob = log_prior - np.dot(diff, np.dot(self.inverted_covariance, diff)) / 2.0
 
@@ -200,8 +222,8 @@ class Experiment:
     def get_log_prior(self, theta):
         prior_dict = {
             'b_0_scaled': (0.6, 6.0),
-            'sigma8': (0.2, 2.0),
-            'z_tail': (0.5, 2.5),
+            # 'sigma8': (0.2, 2.0),
+            # 'z_tail': (0.5, 2.5),
         }
 
         prior = 0
@@ -214,12 +236,11 @@ class Experiment:
         return prior
 
     def set_correlations(self, with_covariance=True):
-        # assert self.are_maps_ready or self.config.read_data_correlations_flag
-
+        # assert self.are_maps_ready or self.config.read_correlations_flag
         self.set_binning()
 
         logger.info('Setting data correlations..')
-        if self.config.read_data_correlations_flag:
+        if self.config.read_correlations_flag:
             self.read_data_correlations()
         else:
             self.set_data_correlations()
@@ -228,23 +249,29 @@ class Experiment:
         self.set_theory_correlations()
 
         logger.info('Setting covariance..')
-        if not self.config.read_data_correlations_flag and with_covariance:
+        # TODO: remove with_covariance flag
+        if self.config.read_covariance_flag and with_covariance:
+            self.covariance_matrices = read_covariances(self)
+        else:
             self.set_gauss_covariance()
-            if self.config.with_jackknife:
+            if self.config.error_method == 'jackknife':
                 self.set_jackknife_covariance()
-            self.set_errors()
+
+        self.set_errors()
+
+        if not self.config.read_correlations_flag:
             self.set_sigmas()
 
-            self.set_inference_covariance()
-            self.set_data_vector()
+        self.set_inference_covariance()
+        self.set_data_vector()
 
-            self.are_correlations_ready = True
+        self.are_correlations_ready = True
 
     def set_sigmas(self):
         for corr_symbol in self.data_correlations:
             bin_range = self.bin_range[corr_symbol]
             data = self.data_correlations[corr_symbol][bin_range[0]:bin_range[1]]
-            cov_matrix = self.covariance_matrices['gauss'][corr_symbol + '-' + corr_symbol]
+            cov_matrix = self.covariance_matrices[self.config.error_method][corr_symbol + '-' + corr_symbol]
             cov_matrix = cov_matrix[bin_range[0]:bin_range[1], bin_range[0]:bin_range[1]]
 
             model = self.theory_correlations[corr_symbol]
@@ -264,7 +291,25 @@ class Experiment:
 
     def set_inference_covariance(self):
         total_length = sum(self.n_ells.values())
-        self.inference_covariance = np.empty((total_length, total_length))
+
+        if self.config.fit_tomographer:
+            # TODO: move to data setting, here more general, add additional part if with tomographer
+            tomographer_file = os.path.join(DATA_PATH, 'LoTSS/DR2/tomographer/{}mJy_{}SNR_srl_catalog_{}.csv'.format(
+                self.config.flux_min_cut, self.config.signal_to_noise, self.config.lss_mask_name.split('_')[1]))
+            tomographer = pd.read_csv(tomographer_file)
+            self.tomographer_z_arr = tomographer['z'][:-1]
+            self.tomographer_n_arr = tomographer['dNdz_b'][:-1]
+            tomographer_n_err_arr = tomographer['dNdz_b_err'][:-1]
+
+            # TODO: what if cosmology changes too?
+            # TODO: add other redshift distributions here
+            if self.config.bias_model == 'scaled':
+                growth_factor = ccl.growth_factor(self.cosmology, 1. / (1. + self.tomographer_z_arr))
+                self.tomographer_n_arr *= growth_factor
+                tomographer_n_err_arr *= growth_factor
+
+            total_length += len(self.tomographer_z_arr)
+        self.inference_covariance = np.zeros((total_length, total_length))
 
         a_start = 0
         for i, corr_symbol_a in enumerate(self.correlation_symbols):
@@ -280,13 +325,16 @@ class Experiment:
                 b_end = b_start + n_ells_b
 
                 # TODO: make sure the order is right, fix last indexing
-                self.inference_covariance[a_start: a_end, b_start: b_end] = self.covariance_matrices['gauss'][
-                                                                                corr_symbol_b + '-' + corr_symbol_a][
-                                                                            bin_range_a[0]:bin_range_a[1],
-                                                                            bin_range_b[0]:bin_range_b[1]]
+                self.inference_covariance[a_start: a_end, b_start: b_end] = \
+                    self.covariance_matrices[self.config.error_method][corr_symbol_b + '-' + corr_symbol_a][
+                    bin_range_a[0]:bin_range_a[1], bin_range_b[0]:bin_range_b[1]]
 
                 b_start += n_ells_b
             a_start += n_ells_a
+
+        if self.config.fit_tomographer:
+            n_tomo = len(self.tomographer_z_arr)
+            np.fill_diagonal(self.inference_covariance[-n_tomo:, -n_tomo:], tomographer_n_err_arr)
 
         self.inference_correlation = get_correlation_matrix(self.inference_covariance)
         self.inverted_covariance = np.linalg.inv(self.inference_covariance)
@@ -407,9 +455,12 @@ class Experiment:
             data_vectors.append(data_vector - noise)
         self.data_vector = np.concatenate(data_vectors)
 
+        if self.config.fit_tomographer:
+            self.data_vector = np.append(self.data_vector, self.tomographer_n_arr)
+
     def read_data_correlations(self):
         correlations_df = read_correlations(experiment=self)
-        error_methods = ['gauss', 'jackknife'] if self.config.with_jackknife else ['gauss']
+        error_methods = ['gauss', 'jackknife'] if self.config.error_method == 'jackknife' else ['gauss']
         for correlation_symbol in self.correlation_symbols:
             self.data_correlations[correlation_symbol] = correlations_df['Cl_{}'.format(correlation_symbol)]
             self.noise_decoupled[correlation_symbol] = correlations_df['nl_{}'.format(correlation_symbol)]
@@ -457,6 +508,10 @@ class Experiment:
                 self.noise_decoupled['gg'] += self.multicomp_noise
                 self.noise_curves['gg'] += self.multicomp_noise
 
+        # Once multicomponent shot noise is added, use A_sn to change amplitude to shot noise
+        self.noise_decoupled['gg'] *= self.config.A_sn
+        self.noise_curves['gg'] *= self.config.A_sn
+
     def set_theory_correlations(self):
         # Get cosmology params
         with open(os.path.join(PROJECT_PATH, 'cosmologies.yml'), 'r') as cosmology_file:
@@ -475,8 +530,9 @@ class Experiment:
         # Get redshift distribution
         lotss_partial = partial(get_lotss_redshift_distribution, z_sfg=getattr(config, 'z_sfg', None),
                                 a=getattr(config, 'a', None), r=getattr(config, 'r', None),
-                                z_tail=getattr(config, 'z_tail', None), flux_cut=getattr(config, 'flux_min_cut', None),
-                                model=config.dn_dz_model)
+                                n=getattr(config, 'n', None), z_tail=getattr(config, 'z_tail', None),
+                                flux_cut=getattr(config, 'flux_min_cut', None), model=config.dn_dz_model,
+                                normalize=False)
         get_redshift_distribution_functions = {
             'LoTSS_DR2': lotss_partial,
             'LoTSS_DR1': lotss_partial,
@@ -487,12 +543,13 @@ class Experiment:
         z_arr, n_arr = get_redshift_distribution_functions[config.lss_survey_name]()
 
         # Get cosmology
-        cosmology = ccl.Cosmology(**cosmology_params)
+        if self.cosmology is None:
+            self.cosmology = ccl.Cosmology(**cosmology_params)
 
         # Get bias
         if config.bias_model == 'scaled':
             bias_arr = config.b_0_scaled * np.ones(len(z_arr))
-            bias_arr = bias_arr / ccl.growth_factor(cosmology, 1. / (1. + z_arr))
+            bias_arr = bias_arr / ccl.growth_factor(self.cosmology, 1. / (1. + z_arr))
         elif config.bias_model == 'polynomial':
             bias_params = [config.b_0, config.b_1, config.b_2]
             bias_arr = sum(bias_params[i] * np.power(z_arr, i) for i in range(len(bias_params)))
@@ -500,16 +557,16 @@ class Experiment:
             bias_arr = config.b_eff * np.ones(len(z_arr))
 
         tracers_dict = {
-            'g': ccl.NumberCountsTracer(cosmology, has_rsd=False, dndz=(z_arr, n_arr), bias=(z_arr, bias_arr)),
-            'k': ccl.CMBLensingTracer(cosmology, 1091),
-            't': ISWTracer(cosmology, z_max=6., n_chi=1024),
+            'g': ccl.NumberCountsTracer(self.cosmology, has_rsd=False, dndz=(z_arr, n_arr), bias=(z_arr, bias_arr)),
+            'k': ccl.CMBLensingTracer(self.cosmology, 1091),
+            # 't': ISWTracer(cosmology, z_max=6., n_chi=1024),
         }
 
         correlations_dict = {}
         for correlation_symbol in correlation_symbols:
             tracer_symbol_a = correlation_symbol[0]
             tracer_symbol_b = correlation_symbol[1]
-            correlations_dict[correlation_symbol] = ccl.angular_cl(cosmology, tracers_dict[tracer_symbol_a],
+            correlations_dict[correlation_symbol] = ccl.angular_cl(self.cosmology, tracers_dict[tracer_symbol_a],
                                                                    tracers_dict[tracer_symbol_b], self.l_arr)
         return z_arr, n_arr, correlations_dict
 
@@ -612,85 +669,6 @@ class Experiment:
         for correlation_symbol in self.correlation_symbols:
             print('C_{} sigma: {:.2f}'.format(correlation_symbol, self.sigmas[correlation_symbol]))
             print('C_{} chi squared: {:.2f}'.format(correlation_symbol, self.chi_squared[correlation_symbol]))
-
-
-def show_mcmc_report(experiment_name, data_name, burnin=None, thin=None):
-    mcmc_folder_path = os.path.join(PROJECT_PATH, 'outputs/MCMC/{}/{}'.format(data_name, experiment_name))
-    mcmc_filepath = os.path.join(mcmc_folder_path, '{}.config.json'.format(experiment_name))
-    with open(mcmc_filepath) as file:
-        config = json.load(file)
-    labels = list(config['starting_params'].keys())
-    n_walkers = config['n_walkers']
-
-    backend_reader = emcee.backends.HDFBackend(os.path.join(mcmc_folder_path, '{}.h5'.format(experiment_name)))
-    tau_arr = np.load(os.path.join(mcmc_folder_path, '{}.tau.npy'.format(experiment_name)))
-    emcee_sampler = emcee.EnsembleSampler(n_walkers, len(labels), None, backend=backend_reader)
-
-    print('Mean acceptance fraction: {}'.format(np.mean(emcee_sampler.acceptance_fraction)))
-    print('Number of iterations: {}'.format(len(tau_arr)))
-    plot_mean_tau(tau_arr)
-
-    tau = emcee_sampler.get_autocorr_time(tol=0)
-    burnin = int(2 * np.max(tau)) if burnin is None else burnin
-    thin = int(0.5 * np.min(tau)) if thin is None else thin
-    samples = emcee_sampler.get_chain(discard=burnin, flat=False, thin=thin)
-    log_prob_samples = emcee_sampler.get_log_prob(discard=burnin, flat=False, thin=thin)
-    #     log_prior_samples = sampler.get_blobs(discard=burnin, flat=True, thin=thin)
-
-    print('burn-in: {0}'.format(burnin))
-    print('thin: {0}'.format(thin))
-    print('flat chain shape: {0}'.format(samples.shape))
-    print('flat log prob shape: {0}'.format(log_prob_samples.shape))
-    #     print('flat log prior shape: {0}'.format(log_prior_samples.shape))
-
-    # all_samples = np.concatenate(
-    #     (samples, log_prob_samples[:, None], log_prior_samples[:, None]), axis=1
-    # )
-
-    for i in range(len(labels)):
-        mcmc = np.percentile(samples[:, :, i].flatten(), [16, 50, 84])
-        q = np.diff(mcmc)
-        # TODO: ugly
-        label = 'b_g' if labels[i][0] == 'b' else labels[i]
-        txt = '\mathrm{{{0}}} = {1:.3f}_{{-{2:.3f}}}^{{{3:.3f}}}'
-        txt = txt.format(label, mcmc[1], q[0], q[1])
-        display(Math(txt))
-
-    # TODO: r'$\sigma_8$' r'$b_g$' pretty print function with map
-    if samples.shape[2] > 1:
-        sns.jointplot(samples[:, :, 1].flatten(), samples[:, :, 0].flatten(), kind='kde',
-                      stat_func=None).set_axis_labels(
-            labels[1], labels[0])
-        plt.show()
-    for i in range(samples.shape[2]):
-        sns.jointplot(log_prob_samples.flatten(), samples[:, :, i].flatten(), kind='kde',
-                      stat_func=None).set_axis_labels(
-            r'log prob', labels[i])
-        plt.show()
-
-    # Samples history
-    fig, axes = plt.subplots(len(labels) + 1, sharex='all')
-    for i in range(len(labels)):
-        ax = axes[i]
-        ax.plot(samples[:, :, i], 'k', alpha=0.3)
-        ax.set_ylabel(labels[i])
-        ax.set_xlim(0, samples.shape[0])
-    ax = axes[-1]
-    ax.plot(log_prob_samples, 'k', alpha=0.3)
-    ax.set_ylabel('log prob')
-    ax.set_xlabel('step number')
-    ax.set_xlim(0, log_prob_samples.shape[0])
-
-    plt.show()
-
-
-def plot_mean_tau(autocorr_time_arr):
-    n = np.arange(1, len(autocorr_time_arr) + 1)
-    plt.plot(n, n / 50.0, '--k')
-    plt.plot(n, autocorr_time_arr)
-    plt.xlabel('number of steps')
-    plt.ylabel(r'mean $\hat{\tau}$')
-    plt.show()
 
 
 # TODO: should me berged with cosmologies.py and Experiment class

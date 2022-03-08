@@ -16,8 +16,8 @@ config.read_data_correlations_flag = False
 print(config)
 
 # Iterate thorugh parameters
-for flux_min_cut in [1.5]:
-    for signal_to_noise in [3, 5, 7.5]:
+for flux_min_cut in [1.5, 2]:
+    for signal_to_noise in [7.5]:
         print('Processing: flux={}, snr={}'.format(flux_min_cut, signal_to_noise))
         config.flux_min_cut = flux_min_cut
         config.signal_to_noise = signal_to_noise

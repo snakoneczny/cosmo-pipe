@@ -19,14 +19,8 @@ logger = logging.getLogger(__name__)
 
 
 class struct(object):
-    original_dict = None
-
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
-        self.original_dict = kwargs
-
-    def get_original_dict(self):
-        return self.original_dict
 
 
 class ISWTracer(ccl.Tracer):
@@ -321,7 +315,7 @@ def get_config(config_name):
     config = config[config_name]
 
     # Dictionary fields, flatten to proper values
-    for key in ['z_tail', 'z_sfg', 'a', 'r', 'b_0_scaled', 'b_0', 'b_1', 'b_2', 'b_eff']:
+    for key in ['z_tail', 'z_sfg', 'a', 'r', 'n', 'b_0_scaled', 'b_0', 'b_1', 'b_2', 'b_eff', 'A_sn']:
         if key in config:
             config[key] = config[key][config['flux_min_cut']]
 
@@ -355,13 +349,43 @@ def save_correlations(experiment):
     df.to_csv(file_path, index=False)
     print('Correlations saved to: {}'.format(file_path))
 
+    folder_path = os.path.join(PROJECT_PATH, 'outputs/correlations/{}/{}_cov'.format(experiment.config.lss_survey_name,
+                                                                                     experiment_name, experiment_name))
+    if not os.path.exists(folder_path):
+        os.mkdir(folder_path)
+    for error_method in error_methods:
+        for correlation_symbol_a in experiment.correlation_symbols:
+            for correlation_symbol_b in experiment.correlation_symbols:
+                covariance_symbol = '{}-{}'.format(correlation_symbol_a, correlation_symbol_b)
+                file_path = os.path.join(folder_path, '{}_cov-{}-{}.csv'.format(
+                    experiment_name, covariance_symbol, error_method))
+                np.savetxt(file_path,
+                           experiment.covariance_matrices[error_method][covariance_symbol], delimiter=',')
+
 
 def read_correlations(filename=None, experiment=None):
     if experiment:
         experiment_name = get_correlations_filename(experiment)
         filename = '{}/{}'.format(experiment.config.lss_survey_name, experiment_name)
     file_path = os.path.join(PROJECT_PATH, 'outputs/correlations/{}.csv'.format(filename))
-    return pd.read_csv(file_path)
+    correlations = pd.read_csv(file_path)
+    return correlations
+
+
+def read_covariances(experiment):
+    experiment_name = get_correlations_filename(experiment)
+    filename = '{}/{}'.format(experiment.config.lss_survey_name, experiment_name)
+    error_methods = ['gauss', 'jackknife'] if experiment.config.error_method == 'jackknife' else ['gauss']
+    covariance_matrices = dict([(error_method, {}) for error_method in error_methods])
+    for error_method in error_methods:
+        for correlation_symbol_a in experiment.correlation_symbols:
+            for correlation_symbol_b in experiment.correlation_symbols:
+                covariance_symbol = '{}-{}'.format(correlation_symbol_a, correlation_symbol_b)
+                file_path = os.path.join(PROJECT_PATH, 'outputs/correlations/{}_cov/{}_cov-{}-{}.csv'.format(
+                    filename, experiment_name, covariance_symbol, error_method))
+                if os.path.exists(file_path):
+                    covariance_matrices[error_method][covariance_symbol] = np.loadtxt(file_path, delimiter=',')
+    return covariance_matrices
 
 
 def get_correlations_filename(experiment):

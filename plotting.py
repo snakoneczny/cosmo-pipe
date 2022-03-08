@@ -119,6 +119,7 @@ def plot_correlation(experiment, correlation_symbol, x_min=0, x_max=None, y_min=
         plt.axvline(l_range[0], label='ell range', color='green')
         plt.axvline(l_range[1], color='green')
 
+    # TODO: change for decoupling and adding decoupled noise
     # Theory
     if correlation_symbol in experiment.theory_correlations:
         # TODO: refactor, effective ells used in line 48 too

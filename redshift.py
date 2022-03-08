@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import pyccl as ccl
 from scipy.integrate import simps
 
-from env_config import PROJECT_PATH, DATA_PATH
+from env_config import PROJECT_PATH
 from scipy.optimize import curve_fit
 
 
@@ -111,8 +111,9 @@ def make_tomographer_fit(filepath, function, p0, p0_b):
     with open(os.path.join(PROJECT_PATH, 'cosmologies.yml'), 'r') as cosmology_file:
         cosmology_params = yaml.full_load(cosmology_file)['planck']
     cosmology = ccl.Cosmology(**cosmology_params)
-    tomographer_b['dNdz_b'] *= ccl.growth_factor(cosmology, 1. / (1. + tomographer['z']))
-    tomographer_b['dNdz_b_err'] *= ccl.growth_factor(cosmology, 1. / (1. + tomographer['z']))
+    growth_factor = ccl.growth_factor(cosmology, 1. / (1. + tomographer['z']))
+    tomographer_b['dNdz_b'] *= growth_factor
+    tomographer_b['dNdz_b_err'] *= growth_factor
 
     # TODO: make plots of initial parameters
 
@@ -128,7 +129,7 @@ def make_tomographer_fit(filepath, function, p0, p0_b):
     # Linear x scale
     make_tomographer_plot(tomographer, popt, perr, ylabel='N * b', xscale='linear', add_bias=False)
     make_tomographer_plot(tomographer_b, popt_b, perr_b, ylabel='N * b', xscale='linear', add_bias=True)
-    make_tomographer_plot(tomographer_b, popt_b, perr_b, xscale='linear', ylabel='N (assuming 1 / D(z))',
+    make_tomographer_plot(tomographer_b, popt_b, perr_b, ylabel='N (assuming 1 / D(z))', xscale='linear',
                           add_bias=False)
 
     # Log x scale
