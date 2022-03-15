@@ -48,11 +48,11 @@ def show_mcmc_report(experiment_name, data_name, burnin=None, thin=None):
     make_param_plots(config, labels, samples)
 
     # Tau plot
-    plot_mean_tau(tau_arr)
+    print('Mean acceptance fraction: {}'.format(np.mean(emcee_sampler.acceptance_fraction)))
+    # print('Number of iterations: {}'.format(len(tau_arr)))
     print('burn-in: {0}'.format(burnin))
     print('thin: {0}'.format(thin))
-    print('Mean acceptance fraction: {}'.format(np.mean(emcee_sampler.acceptance_fraction)))
-    print('Number of iterations: {}'.format(len(tau_arr)))
+    plot_mean_tau(tau_arr)
 
     # Samples history
     plot_samples_history(labels, samples, log_prob_samples)

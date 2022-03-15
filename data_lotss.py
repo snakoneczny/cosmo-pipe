@@ -32,15 +32,15 @@ def get_redshift_distributions(data_optical, data_skads):
     r_d = {2: 0.94, 1: 0.90, 0.5: 0.93}
 
     # Fit to DR2 correlations
-    z_sfg_f = {2: 0.15, 1: 0.22, 0.5: 0.15}
-    a_f = {2: 4.8, 1: 5.2, 0.5: 4.56}
-    r_f = {2: 0.91, 1: 0.80, 0.5: 0.93}
+    z_sfg_f = {2: 0.15, 1.5: 0.016, 1: 0.22, 0.5: 0.15}
+    a_f = {2: 4.8, 1.5: 4.32, 1: 5.2, 0.5: 4.56}
+    r_f = {2: 0.91, 1.5: 0.05, 1: 0.80, 0.5: 0.93}
 
     z_tail = {2: 1.3}
     z_tail_limit = {2: (-0.4, 0.27)}
 
     redshift_distributions = defaultdict(dict)
-    for flux_cut in [2, 1, 0.5]:
+    for flux_cut in [2, 1.5, 1, 0.5]:
 
         # TRECS
         filepath = os.path.join(DATA_PATH, 'TRECS/pz/trecs{}wide_z_nz_{}mjy.dat')

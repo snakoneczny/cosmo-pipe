@@ -13,6 +13,10 @@ args = parser.parse_args()
 config = get_config(args.config_name)
 config.experiment_tag = args.tag
 
+# TODO:
+# read_correlations_flag: False
+# read_covariance_flag: True
+
 # Run emcee
 experiment = Experiment(config, set_data=True, set_maps=True, set_correlations=True)
 experiment.run_emcee()

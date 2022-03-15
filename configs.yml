@@ -68,7 +68,7 @@ LoTSS_DR2:
   continue_sampling: False
   fit_tomographer: False
 #  to_infere: [b_0_scaled, z_sfg, a, r, n, A_sn]
-  to_infere: [A_sn]
+  to_infere: [b_0_scaled, A_sn]
   max_iterations: 20000
   n_walkers: 32
 

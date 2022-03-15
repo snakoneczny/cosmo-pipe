@@ -324,9 +324,8 @@ class Experiment:
                 a_end = a_start + n_ells_a
                 b_end = b_start + n_ells_b
 
-                # TODO: make sure the order is right, fix last indexing
                 self.inference_covariance[a_start: a_end, b_start: b_end] = \
-                    self.covariance_matrices[self.config.error_method][corr_symbol_b + '-' + corr_symbol_a][
+                    self.covariance_matrices[self.config.error_method][corr_symbol_a + '-' + corr_symbol_b][
                     bin_range_a[0]:bin_range_a[1], bin_range_b[0]:bin_range_b[1]]
 
                 b_start += n_ells_b
@@ -334,7 +333,7 @@ class Experiment:
 
         if self.config.fit_tomographer:
             n_tomo = len(self.tomographer_z_arr)
-            np.fill_diagonal(self.inference_covariance[-n_tomo:, -n_tomo:], tomographer_n_err_arr)
+            np.fill_diagonal(self.inference_covariance[-n_tomo:, -n_tomo:], tomographer_n_err_arr ** 2)
 
         self.inference_correlation = get_correlation_matrix(self.inference_covariance)
         self.inverted_covariance = np.linalg.inv(self.inference_covariance)
