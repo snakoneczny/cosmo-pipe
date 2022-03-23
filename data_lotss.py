@@ -136,20 +136,27 @@ def get_redshift_distributions(data_optical, data_skads):
     return redshift_distributions
 
 
-def get_lotss_redshift_distribution(z_tail=None, z_sfg=None, a=None, r=None, n=1, flux_cut=None, model='power_law',
-                                    z_max=6, z_arr=None, normalize=False):
+def get_lotss_redshift_distribution(config=None, z_tail=None, z_sfg=None, a=None, r=None, n=1, flux_cut=None,
+                                    model='power_law', z_max=6, z_arr=None, normalize=False):
+    if config:
+        z_tail = getattr(config, 'z_tail', None)
+        z_sfg = getattr(config, 'z_sfg', None)
+        a = getattr(config, 'a', None)
+        r = getattr(config, 'r', None)
+        n = getattr(config, 'n', None)
+        flux_cut = getattr(config, 'flux_min_cut', None)
+        model = config.dn_dz_model
+
     if model == 'deep_fields':
-        # TODO: delete
-        flux_cut_to_use = 2 if flux_cut == 1.5 else flux_cut
-        deepfields_file = 'LoTSS/DR2/pz_deepfields/Pz_booterrors_wsum_deepfields_{}mJy.fits'.format(
-            ''.join(str(flux_cut_to_use).split('.')))
+        deepfields_file = 'LoTSS/DR2/pz_deepfields/Pz_booterrors_wsum_deepfields_{:.1f}mJy.fits'.format(flux_cut)
         pz_deepfields = read_fits_to_pandas(os.path.join(DATA_PATH, deepfields_file))
         z_arr = pz_deepfields['zbins']
-        n_arr = pz_deepfields['pz']
+        n_arr = pz_deepfields['pz_boot_mean']
 
     elif model == 'tomographer':
-        # TODO: update
-        tomographer = pd.read_csv(os.path.join(DATA_PATH, 'LoTSS/tomographer/full_maskstrict_I2mJy_q5.csv'))
+        filename = 'LoTSS/DR2/tomographer/{}mJy_{}SNR_srl_catalog_inner.csv'.format(
+            config.flux_min_cut, config.signal_to_noise_ratio)
+        tomographer = pd.read_csv(os.path.join(DATA_PATH, filename))
         z_arr = tomographer['z'][:-1]
         n_arr = tomographer['dNdz_b'][:-1]
 
@@ -182,11 +189,25 @@ def get_biggest_optical_region(data):
 
 
 def read_lotss_noise_weight_map(nside, data_release, flux_min_cut, signal_to_noise):
-    file_path = os.path.join(DATA_PATH,
-                             'LoTSS/DR{}/weight_maps/weight_map__pointing-mean_minflux-{}_snr-{}.fits'.format(
-                                 data_release, flux_min_cut, signal_to_noise))
-    weight_map = hp.read_map(file_path)
+    # file_path = os.path.join(DATA_PATH,
+    #                          'LoTSS/DR{}/weight_maps_pointings/weight_map__pointing-mean_minflux-{}_snr-{}.fits'.format(
+    #                              data_release, flux_min_cut, signal_to_noise))
+    # weight_map = hp.read_map(file_path)
+    # weight_map = hp.ud_grade(weight_map, nside)
+
+    folder = 'LoTSS/DR{}/weight_maps_randoms'
+    file_path_in = os.path.join(DATA_PATH, folder, 'Randoms_input_Nside_{}_Fl_{:.1f}mJy.fits')
+    file_path_out = os.path.join(DATA_PATH, folder, 'Randoms_output_Nside_{}_SNR_{:.1f}_Fl_{:.1f}mJy_withoutFluxShift.fits')
+
+    file_path_in = file_path_in.format(data_release, nside, flux_min_cut)
+    file_path_out = file_path_out.format(data_release, nside, signal_to_noise, flux_min_cut)
+
+    map_in = hp.read_map(file_path_in)
+    map_out = hp.read_map(file_path_out)
+
+    weight_map = np.array([map_out[i] / map_in[i] if map_in[i] != 0 else 0 for i in range(len(map_in))])
     weight_map = hp.ud_grade(weight_map, nside)
+
     return weight_map
 
 

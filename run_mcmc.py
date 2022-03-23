@@ -13,9 +13,10 @@ args = parser.parse_args()
 config = get_config(args.config_name)
 config.experiment_tag = args.tag
 
-# TODO:
-# read_correlations_flag: False
-# read_covariance_flag: True
+# Set proper flags, assuming covariance ready and saved, correlations have to be calculated
+# to get NaMaster workspaces for decoupling
+config.read_correlations_flag = False
+config.read_covariance_flag = True
 
 # Run emcee
 experiment = Experiment(config, set_data=True, set_maps=True, set_correlations=True)

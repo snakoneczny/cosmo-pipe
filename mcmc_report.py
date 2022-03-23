@@ -8,6 +8,7 @@ from matplotlib import pyplot as plt
 from corner import corner
 import pyccl as ccl
 from tqdm import tqdm_notebook
+from copy import deepcopy
 
 from env_config import PROJECT_PATH, DATA_PATH
 from data_lotss import get_lotss_redshift_distribution
@@ -34,28 +35,46 @@ def show_mcmc_report(experiment_name, data_name, burnin=None, thin=None):
     log_prob_samples = emcee_sampler.get_log_prob(discard=burnin, flat=True, thin=thin)
     # log_prior_samples = sampler.get_blobs(discard=burnin, flat=True, thin=thin)
 
-    # Final estimates
+    # Final estimate
+    best_fit_params = {}
     for i in range(len(labels)):
         mcmc = np.percentile(samples[:, i], [16, 50, 84])
+        best_fit_params[labels[i]] = mcmc[1]
         q = np.diff(mcmc)
         print('{} = {:.3f} (+{:.3f}, -{:.3f})'.format(labels[i], mcmc[1], q[0], q[1]))
 
+    # Sigmas and chi-squared
+    make_sigmas_report(config, best_fit_params)
+
     # Corner plot
-    corner(samples, labels=labels)  # , truths=[m_true, b_true, np.log(f_true)])
+    truths = [None] * len(labels)
+    if 'sigma8' in labels:
+        truths[labels.index('sigma8')] = 0.83
+    corner(samples, labels=labels, truths=truths)
     plt.show()
+
+    # Tau plot
+    plot_mean_tau(tau_arr)
+    mean_acceptance_fraction = np.mean(emcee_sampler.acceptance_fraction) * 100
+    print('Mean acceptance fraction: {:.1f}%; burn-in: {}; thin: {}'.format(mean_acceptance_fraction, burnin, thin))
+    # print('Number of iterations: {}'.format(len(tau_arr)))
+
+    # Samples history
+    plot_samples_history(labels, samples, log_prob_samples)
 
     # Correlation and redshift plots
     make_param_plots(config, labels, samples)
 
-    # Tau plot
-    print('Mean acceptance fraction: {}'.format(np.mean(emcee_sampler.acceptance_fraction)))
-    # print('Number of iterations: {}'.format(len(tau_arr)))
-    print('burn-in: {0}'.format(burnin))
-    print('thin: {0}'.format(thin))
-    plot_mean_tau(tau_arr)
 
-    # Samples history
-    plot_samples_history(labels, samples, log_prob_samples)
+def make_sigmas_report(config, best_fit_params):
+    best_fit_config = deepcopy(config)
+    best_fit_config.update(best_fit_params)
+    best_fit_config = struct(**best_fit_config)
+    best_fit_config.read_correlations_flag = False
+    best_fit_config.read_covariance_flag = True
+    experiment = Experiment(best_fit_config, set_data=True, set_maps=True)
+    experiment.set_correlations(with_covariance=True)
+    experiment.print_correlation_statistics()
 
 
 def make_param_plots(config, arg_names, samples):
@@ -71,14 +90,21 @@ def make_param_plots(config, arg_names, samples):
     correlations = dict([(correlation_symbol, []) for correlation_symbol in experiment.correlation_symbols])
     inds = np.random.randint(len(samples), size=200)
     for ind in tqdm_notebook(inds):
+        # Update data params
         sample = samples[ind]
         to_update = dict(zip(arg_names, sample))
         config.__dict__.update(to_update)
 
+        # Update cosmo parameters
+        cosmology_params = deepcopy(experiment.cosmology_params)
+        param_names = [param_name for param_name in arg_names if param_name in experiment.cosmology_params]
+        for param_name in param_names:
+            cosmology_params[param_name] = to_update[param_name]
+
         # TODO: make sure later that cosmology is taken into account correctly
         # Add correlation function to samples stores
-        _, _, correlations_dict = experiment.get_theory_correlations(config, experiment.cosmology_params,
-                                                                     experiment.correlation_symbols)
+        _, _, correlations_dict = experiment.get_theory_correlations(config, experiment.correlation_symbols,
+                                                                     cosmology_params=cosmology_params)
 
         # Decoupling
         for correlation_symbol in experiment.correlation_symbols:
@@ -93,11 +119,9 @@ def make_param_plots(config, arg_names, samples):
             correlations[correlation_symbol].append(correlations_dict[correlation_symbol])
 
         # Store redshift distribution
-        if 'z_sfg' in arg_names:
-            z_arr, n_arr = get_lotss_redshift_distribution(
-                z_sfg=getattr(config, 'z_sfg', None), a=getattr(config, 'a', None), r=getattr(config, 'r', None),
-                n=getattr(config, 'n', None), z_tail=getattr(config, 'z_tail', None), flux_cut=config.flux_min_cut,
-                model=config.dn_dz_model, normalize=False)
+        if experiment.config.redshift_to_fit:
+            normalize = False if experiment.config.redshift_to_fit == 'tomographer' else True
+            z_arr, n_arr = get_lotss_redshift_distribution(config=config, normalize=normalize)
             redshift_functions.append(n_arr)
 
     # Plot correlations
@@ -138,18 +162,8 @@ def make_param_plots(config, arg_names, samples):
         for n_arr in redshift_functions:
             plt.plot(z_arr, n_arr, 'C1', alpha=0.01)
 
-        tomographer_file = os.path.join(DATA_PATH, 'LoTSS/DR2/tomographer/{}mJy_{}SNR_srl_catalog_{}.csv'.format(
-            config.flux_min_cut, config.signal_to_noise, config.lss_mask_name.split('_')[1]))
-        tomographer = pd.read_csv(tomographer_file)
-        z_arr = tomographer['z'][:-1]
-        n_arr = tomographer['dNdz_b'][:-1]
-        n_err_arr = tomographer['dNdz_b_err'][:-1]
-
-        growth_factor = ccl.growth_factor(experiment.cosmology, 1. / (1. + z_arr))
-        n_arr *= growth_factor
-        n_err_arr *= growth_factor
-
-        plt.errorbar(z_arr, n_arr, n_err_arr, fmt='b.', label='tomographer')
+        plt.errorbar(experiment.dz_to_fit, experiment.dn_dz_to_fit, experiment.dn_dz_err_to_fit, fmt='b.',
+                     label=experiment.config.redshift_to_fit)
         plt.axhline(y=0, color='gray', linestyle='-')
 
         plt.legend()

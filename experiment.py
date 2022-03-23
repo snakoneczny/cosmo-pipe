@@ -13,11 +13,12 @@ import emcee
 import json
 import yaml
 from tqdm import tqdm
+from scipy.interpolate import interp1d
 
 from env_config import PROJECT_PATH, DATA_PATH
 from utils import logger, process_to_overdensity_map, get_pairs, get_correlation_matrix, \
     get_redshift_distribution, get_chi_squared, decouple_correlation, read_correlations, \
-    get_corr_mean_diff, get_correlations, get_jackknife_masks, read_covariances
+    get_corr_mean_diff, get_correlations, get_jackknife_masks, read_covariances, read_fits_to_pandas
 from data_lotss import get_lotss_data, get_lotss_map, get_lotss_redshift_distribution, LOTSS_JACKKNIFE_REGIONS
 from data_nvss import get_nvss_map, get_nvss_redshift_distribution
 from data_kids_qso import get_kids_qsos, get_kids_qso_map
@@ -62,6 +63,7 @@ class Experiment:
         self.bin_range = {}
         self.n_ells = {}
         self.cosmology = None
+        self.get_redshift_dist_function = None
 
         # MCMC containers
         self.inference_covariance = None
@@ -73,8 +75,9 @@ class Experiment:
         self.arg_names = None
         self.backend_filename = None
         self.tau_filename = None
-        self.tomographer_z_arr = None
-        self.tomographer_n_arr = None
+        self.dz_to_fit = None
+        self.dn_dz_to_fit = None
+        self.dn_dz_err_to_fit = None
 
         # Pipeline flags
         self.are_data_ready = False
@@ -157,38 +160,35 @@ class Experiment:
         self.emcee_sampler = emcee.EnsembleSampler(n_walkers, n_dim, self.get_log_prob, backend=backend)
 
     def set_walkers_starting_params(self):
-        # TODO: cosmo params, A_sn
-        p0 = np.array([self.config.__dict__[key] for key in self.config.to_infere])
+        p0 = np.array(
+            [self.config.__dict__[key] if key in self.config.__dict__ else self.cosmology_params[key] for key in
+             self.config.to_infere])
         p0_scales = p0 * 0.1
         n_dim = len(p0)
         self.p0_walkers = np.array(
             [p0 + p0_scales * np.random.uniform(low=-1, high=1, size=n_dim) for _ in range(self.config.n_walkers)])
 
     def get_log_prob(self, theta):
-        # TODO: uncomment
         # Check the priors
-        # log_prior = self.get_log_prior(theta)
-        # if not np.isfinite(log_prior):
-        #     return -np.inf
-        log_prior = 0
-
-        # Update default cosmological parameters with new sampled parameters
-        # TODO: flag indicating whether cosmology changed
-        # cosmo_params = self.cosmology_params.copy()
-        # for param_name in self.arg_names:
-        #     if param_name in cosmo_params:
-        #         cosmo_params[param_name] = theta[self.arg_names.index(param_name)]
+        log_prior = self.get_log_prior(theta)
+        if not np.isfinite(log_prior):
+            return -np.inf
 
         # Update data parameters
         config = deepcopy(self.config)
         to_update = dict(zip(self.arg_names, theta))
         config.__dict__.update(to_update)
 
-        # TODO: pass cosmo params
+        # Update cosmo parameters
+        cosmology_params = deepcopy(self.cosmology_params)
+        param_names = [param_name for param_name in self.arg_names if param_name in self.cosmology_params]
+        for param_name in param_names:
+            cosmology_params[param_name] = to_update[param_name]
+
         # Get theory correlations and bin spectra using coupling matrices in workspaces
         try:
-            _, _, correlations_dict = self.get_theory_correlations(config, cosmology_params=None,
-                                                                   correlation_symbols=self.correlation_symbols)
+            _, _, correlations_dict = self.get_theory_correlations(config, self.correlation_symbols, interpolate=False,
+                                                                   cosmology_params=cosmology_params)
         except:
             return -np.inf
 
@@ -204,16 +204,12 @@ class Experiment:
             model_correlations.append(correlation[bin_range[0]:bin_range[1]])
         model_correlations = np.concatenate(model_correlations)
 
-        if self.config.fit_tomographer:
-            # TODO: refactor
-            _, n_arr = get_lotss_redshift_distribution(
-                z_sfg=getattr(config, 'z_sfg', None), a=getattr(config, 'a', None), r=getattr(config, 'r', None),
-                n=getattr(config, 'n', None), z_tail=getattr(config, 'z_tail', None), z_arr=self.tomographer_z_arr,
-                flux_cut=getattr(config, 'flux_min_cut', None), model=config.dn_dz_model, normalize=False)
+        if self.config.redshift_to_fit:
+            normalize = False if self.config.redshift_to_fit == 'tomographer' else True
+            _, n_arr = self.get_redshift_dist_function(config=config, z_arr=self.dz_to_fit, normalize=normalize)
             model_correlations = np.append(model_correlations, n_arr)
 
         # Calculate log prob
-        # diff = self.data_vector - model_correlations
         diff = self.data_vector - model_correlations
         log_prob = log_prior - np.dot(diff, np.dot(self.inverted_covariance, diff)) / 2.0
 
@@ -221,7 +217,13 @@ class Experiment:
 
     def get_log_prior(self, theta):
         prior_dict = {
-            'b_0_scaled': (0.6, 6.0),
+            'b_0_scaled': (0, np.inf),
+            'A_sn': (0, np.inf),
+            'sigma8': (0, np.inf),
+            'r': (0, np.inf),
+            'n': (0, np.inf),
+            'z_sfg': (0, np.inf),
+            # 'b_0_scaled': (0.6, 6.0),
             # 'sigma8': (0.2, 2.0),
             # 'z_tail': (0.5, 2.5),
         }
@@ -232,6 +234,7 @@ class Experiment:
                 param_val = theta[self.arg_names.index(param)]
                 if param_val < prior_dict[param][0] or param_val > prior_dict[param][1]:
                     prior = -np.inf
+                    break
 
         return prior
 
@@ -292,23 +295,31 @@ class Experiment:
     def set_inference_covariance(self):
         total_length = sum(self.n_ells.values())
 
-        if self.config.fit_tomographer:
-            # TODO: move to data setting, here more general, add additional part if with tomographer
+        # TODO: move to data setting, here more general
+        if self.config.redshift_to_fit == 'tomographer':
             tomographer_file = os.path.join(DATA_PATH, 'LoTSS/DR2/tomographer/{}mJy_{}SNR_srl_catalog_{}.csv'.format(
                 self.config.flux_min_cut, self.config.signal_to_noise, self.config.lss_mask_name.split('_')[1]))
             tomographer = pd.read_csv(tomographer_file)
-            self.tomographer_z_arr = tomographer['z'][:-1]
-            self.tomographer_n_arr = tomographer['dNdz_b'][:-1]
-            tomographer_n_err_arr = tomographer['dNdz_b_err'][:-1]
+            self.dz_to_fit = tomographer['z'][:-1]
+            self.dn_dz_to_fit = tomographer['dNdz_b'][:-1]
+            self.dn_dz_err_to_fit = tomographer['dNdz_b_err'][:-1]
 
-            # TODO: what if cosmology changes too?
             # TODO: add other redshift distributions here
             if self.config.bias_model == 'scaled':
-                growth_factor = ccl.growth_factor(self.cosmology, 1. / (1. + self.tomographer_z_arr))
-                self.tomographer_n_arr *= growth_factor
-                tomographer_n_err_arr *= growth_factor
+                growth_factor = ccl.growth_factor(self.cosmology, 1. / (1. + self.dz_to_fit))
+                self.dn_dz_to_fit *= growth_factor
+                self.dn_dz_err_to_fit *= growth_factor
 
-            total_length += len(self.tomographer_z_arr)
+        elif self.config.redshift_to_fit == 'deep_fields':
+            deepfields_file = 'LoTSS/DR2/pz_deepfields/Pz_booterrors_wsum_deepfields_{:.1f}mJy.fits'.format(
+                self.config.flux_min_cut)
+            pz_deepfields = read_fits_to_pandas(os.path.join(DATA_PATH, deepfields_file))
+            self.dz_to_fit = pz_deepfields['zbins']
+            self.dn_dz_to_fit = pz_deepfields['pz_boot_mean']
+            self.dn_dz_err_to_fit = pz_deepfields['error_boot']
+
+        if self.dz_to_fit is not None:
+            total_length += len(self.dz_to_fit)
         self.inference_covariance = np.zeros((total_length, total_length))
 
         a_start = 0
@@ -331,9 +342,9 @@ class Experiment:
                 b_start += n_ells_b
             a_start += n_ells_a
 
-        if self.config.fit_tomographer:
-            n_tomo = len(self.tomographer_z_arr)
-            np.fill_diagonal(self.inference_covariance[-n_tomo:, -n_tomo:], tomographer_n_err_arr ** 2)
+        if self.config.redshift_to_fit:
+            n_dz_to_fit = len(self.dz_to_fit)
+            np.fill_diagonal(self.inference_covariance[-n_dz_to_fit:, -n_dz_to_fit:], self.dn_dz_err_to_fit ** 2)
 
         self.inference_correlation = get_correlation_matrix(self.inference_covariance)
         self.inverted_covariance = np.linalg.inv(self.inference_covariance)
@@ -454,8 +465,8 @@ class Experiment:
             data_vectors.append(data_vector - noise)
         self.data_vector = np.concatenate(data_vectors)
 
-        if self.config.fit_tomographer:
-            self.data_vector = np.append(self.data_vector, self.tomographer_n_arr)
+        if self.config.redshift_to_fit:
+            self.data_vector = np.append(self.data_vector, self.dn_dz_to_fit)
 
     def read_data_correlations(self):
         correlations_df = read_correlations(experiment=self)
@@ -517,21 +528,23 @@ class Experiment:
             self.cosmology_params = yaml.full_load(cosmology_file)[self.config.cosmology_name]
         self.cosmology_params['matter_power_spectrum'] = self.config.cosmology_matter_power_spectrum
 
+        # TODO: make sure it's ok
+        # TODO: make list of cosmo params?
+        # TODO: iterate through things in self.cosmology_params, if present in self.config then change, remove cosmo params update
+        if getattr(self.config, 'sigma8', None):
+            self.cosmology_params['sigma8'] = self.config.sigma8
+
         correlations_to_set = [x for x in self.all_correlation_symbols if x not in self.theory_correlations]
-        self.z_arr, self.n_arr, correlations_dict = self.get_theory_correlations(self.config, self.cosmology_params,
-                                                                                 correlations_to_set)
+        self.cosmology = ccl.Cosmology(**self.cosmology_params)
+        self.z_arr, self.n_arr, correlations_dict = self.get_theory_correlations(self.config, correlations_to_set)
         self.theory_correlations.update(correlations_dict)
 
         for correlation_symbol in self.theory_correlations.keys():
             self.theory_correlations[correlation_symbol] += self.noise_curves[correlation_symbol]
 
-    def get_theory_correlations(self, config, cosmology_params, correlation_symbols):
+    def get_theory_correlations(self, config, correlation_symbols, cosmology_params=None, interpolate=False):
         # Get redshift distribution
-        lotss_partial = partial(get_lotss_redshift_distribution, z_sfg=getattr(config, 'z_sfg', None),
-                                a=getattr(config, 'a', None), r=getattr(config, 'r', None),
-                                n=getattr(config, 'n', None), z_tail=getattr(config, 'z_tail', None),
-                                flux_cut=getattr(config, 'flux_min_cut', None), model=config.dn_dz_model,
-                                normalize=False)
+        lotss_partial = partial(get_lotss_redshift_distribution, config=config, normalize=False)
         get_redshift_distribution_functions = {
             'LoTSS_DR2': lotss_partial,
             'LoTSS_DR1': lotss_partial,
@@ -539,16 +552,17 @@ class Experiment:
             # TODO: should include mask (?)
             'KiDS_QSO': partial(get_redshift_distribution, self.data.get('g'), n_bins=50, z_col='Z_PHOTO_QSO')
         }
-        z_arr, n_arr = get_redshift_distribution_functions[config.lss_survey_name]()
+        self.get_redshift_dist_function = get_redshift_distribution_functions[config.lss_survey_name]
+        z_arr, n_arr = self.get_redshift_dist_function()
 
         # Get cosmology
-        if self.cosmology is None:
-            self.cosmology = ccl.Cosmology(**cosmology_params)
+        cosmology = self.cosmology if ((not cosmology_params) or cosmology_params == self.cosmology_params) else \
+            ccl.Cosmology(**cosmology_params)
 
         # Get bias
         if config.bias_model == 'scaled':
             bias_arr = config.b_0_scaled * np.ones(len(z_arr))
-            bias_arr = bias_arr / ccl.growth_factor(self.cosmology, 1. / (1. + z_arr))
+            bias_arr = bias_arr / ccl.growth_factor(cosmology, 1. / (1. + z_arr))
         elif config.bias_model == 'polynomial':
             bias_params = [config.b_0, config.b_1, config.b_2]
             bias_arr = sum(bias_params[i] * np.power(z_arr, i) for i in range(len(bias_params)))
@@ -556,8 +570,8 @@ class Experiment:
             bias_arr = config.b_eff * np.ones(len(z_arr))
 
         tracers_dict = {
-            'g': ccl.NumberCountsTracer(self.cosmology, has_rsd=False, dndz=(z_arr, n_arr), bias=(z_arr, bias_arr)),
-            'k': ccl.CMBLensingTracer(self.cosmology, 1091),
+            'g': ccl.NumberCountsTracer(cosmology, has_rsd=False, dndz=(z_arr, n_arr), bias=(z_arr, bias_arr)),
+            'k': ccl.CMBLensingTracer(cosmology, 1091),
             # 't': ISWTracer(cosmology, z_max=6., n_chi=1024),
         }
 
@@ -565,8 +579,28 @@ class Experiment:
         for correlation_symbol in correlation_symbols:
             tracer_symbol_a = correlation_symbol[0]
             tracer_symbol_b = correlation_symbol[1]
-            correlations_dict[correlation_symbol] = ccl.angular_cl(self.cosmology, tracers_dict[tracer_symbol_a],
-                                                                   tracers_dict[tracer_symbol_b], self.l_arr)
+
+            ell_arr = self.l_arr
+            if interpolate:
+                nl_per_decade = 30
+                l_min_sample = self.config.l_range[correlation_symbol][0]
+                l_max_sample = self.config.l_range[correlation_symbol][1]
+
+                nl_sample = int(np.log10(l_max_sample / l_min_sample) * nl_per_decade)
+                ell_arr = np.unique(np.geomspace(l_min_sample, l_max_sample + 1, nl_sample).astype(int)).astype(float)
+                if l_min_sample > 0:
+                    ell_arr = np.concatenate((np.array([0.]), ell_arr))
+                if l_max_sample < 3 * self.config.nside:
+                    ell_arr = np.concatenate((ell_arr, np.array([3 * self.config.nside])))
+
+            correlation = ccl.angular_cl(cosmology, tracers_dict[tracer_symbol_a], tracers_dict[tracer_symbol_b],
+                                         ell_arr)
+
+            if interpolate:
+                f = interp1d(ell_arr, correlation)
+                correlation = f(self.l_arr)
+
+            correlations_dict[correlation_symbol] = correlation
         return z_arr, n_arr, correlations_dict
 
     def set_binning(self):
