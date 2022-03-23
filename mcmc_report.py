@@ -16,7 +16,7 @@ from experiment import Experiment
 from utils import struct, decouple_correlation
 
 
-def show_mcmc_report(experiment_name, data_name, burnin=None, thin=None):
+def show_mcmc_report(experiment_name, data_name, burnin=None, thin=None, quick=False):
     mcmc_folder_path = os.path.join(PROJECT_PATH, 'outputs/MCMC/{}/{}'.format(data_name, experiment_name))
     mcmc_filepath = os.path.join(mcmc_folder_path, '{}.config.json'.format(experiment_name))
     with open(mcmc_filepath) as file:
@@ -63,7 +63,8 @@ def show_mcmc_report(experiment_name, data_name, burnin=None, thin=None):
     plot_samples_history(labels, samples, log_prob_samples)
 
     # Correlation and redshift plots
-    make_param_plots(config, labels, samples)
+    if not quick:
+        make_param_plots(config, labels, samples)
 
 
 def make_sigmas_report(config, best_fit_params):

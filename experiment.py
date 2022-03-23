@@ -217,15 +217,13 @@ class Experiment:
 
     def get_log_prior(self, theta):
         prior_dict = {
-            'b_0_scaled': (0, np.inf),
+            'b_g': (0, np.inf),
+            'b_g_scaled': (0, np.inf),
             'A_sn': (0, np.inf),
             'sigma8': (0, np.inf),
             'r': (0, np.inf),
             'n': (0, np.inf),
             'z_sfg': (0, np.inf),
-            # 'b_0_scaled': (0.6, 6.0),
-            # 'sigma8': (0.2, 2.0),
-            # 'z_tail': (0.5, 2.5),
         }
 
         prior = 0
@@ -560,8 +558,10 @@ class Experiment:
             ccl.Cosmology(**cosmology_params)
 
         # Get bias
-        if config.bias_model == 'scaled':
-            bias_arr = config.b_0_scaled * np.ones(len(z_arr))
+        if config.bias_model == 'constant':
+            bias_arr = config.b_g * np.ones(len(z_arr))
+        elif config.bias_model == 'scaled':
+            bias_arr = config.b_g_scaled * np.ones(len(z_arr))
             bias_arr = bias_arr / ccl.growth_factor(cosmology, 1. / (1. + z_arr))
         elif config.bias_model == 'polynomial':
             bias_params = [config.b_0, config.b_1, config.b_2]
