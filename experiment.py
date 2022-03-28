@@ -103,6 +103,12 @@ class Experiment:
         mcmc_folder = 'outputs/MCMC/{}/{}'.format(config.lss_survey_name, self.experiment_name)
         self.mcmc_folder = os.path.join(PROJECT_PATH, mcmc_folder)
 
+        # Initialize cosmology and bias_arr
+        self.set_cosmology()
+
+        # Define redshift distribution function
+        self.set_dn_dz_function()
+
         # Set maps and correlations
         if set_data:
             self.set_data()
@@ -110,6 +116,34 @@ class Experiment:
             self.set_maps()
         if set_correlations:
             self.set_correlations()
+
+    def set_cosmology(self):
+        # Get cosmology params
+        with open(os.path.join(PROJECT_PATH, 'cosmologies.yml'), 'r') as cosmology_file:
+            self.cosmology_params = yaml.full_load(cosmology_file)[self.config.cosmology_name]
+        self.cosmology_params['matter_power_spectrum'] = self.config.cosmology_matter_power_spectrum
+
+        # TODO: make sure it's ok
+        # TODO: make list of cosmo params?
+        # TODO: iterate through things in self.cosmology_params, if present in self.config then change, remove cosmo params update
+        if getattr(self.config, 'sigma8', None):
+            self.cosmology_params['sigma8'] = self.config.sigma8
+
+        correlations_to_set = [x for x in self.all_correlation_symbols if x not in self.theory_correlations]
+        self.cosmology = ccl.Cosmology(**self.cosmology_params)
+
+    def set_dn_dz_function(self):
+        # TODO: refactor with set_theory_correlations piece of code
+        # Get redshift distribution
+        lotss_partial = partial(get_lotss_redshift_distribution, config=self.config, normalize=False)
+        get_redshift_distribution_functions = {
+            'LoTSS_DR2': lotss_partial,
+            'LoTSS_DR1': lotss_partial,
+            'NVSS': get_nvss_redshift_distribution,
+            # TODO: should include mask (?)
+            'KiDS_QSO': partial(get_redshift_distribution, self.data.get('g'), n_bins=50, z_col='Z_PHOTO_QSO'),
+        }
+        self.get_redshift_dist_function = get_redshift_distribution_functions[self.config.lss_survey_name]
 
     def run_emcee(self):
         assert self.are_correlations_ready
@@ -302,7 +336,7 @@ class Experiment:
             self.dn_dz_to_fit = tomographer['dNdz_b'][:-1]
             self.dn_dz_err_to_fit = tomographer['dNdz_b_err'][:-1]
 
-            # TODO: add other redshift distributions here
+            # TODO: add other redshift distributions here, or just make use of the get_bias_function
             if self.config.bias_model == 'scaled':
                 growth_factor = ccl.growth_factor(self.cosmology, 1. / (1. + self.dz_to_fit))
                 self.dn_dz_to_fit *= growth_factor
@@ -521,19 +555,7 @@ class Experiment:
         self.noise_curves['gg'] *= self.config.A_sn
 
     def set_theory_correlations(self):
-        # Get cosmology params
-        with open(os.path.join(PROJECT_PATH, 'cosmologies.yml'), 'r') as cosmology_file:
-            self.cosmology_params = yaml.full_load(cosmology_file)[self.config.cosmology_name]
-        self.cosmology_params['matter_power_spectrum'] = self.config.cosmology_matter_power_spectrum
-
-        # TODO: make sure it's ok
-        # TODO: make list of cosmo params?
-        # TODO: iterate through things in self.cosmology_params, if present in self.config then change, remove cosmo params update
-        if getattr(self.config, 'sigma8', None):
-            self.cosmology_params['sigma8'] = self.config.sigma8
-
         correlations_to_set = [x for x in self.all_correlation_symbols if x not in self.theory_correlations]
-        self.cosmology = ccl.Cosmology(**self.cosmology_params)
         self.z_arr, self.n_arr, correlations_dict = self.get_theory_correlations(self.config, correlations_to_set)
         self.theory_correlations.update(correlations_dict)
 
@@ -541,6 +563,7 @@ class Experiment:
             self.theory_correlations[correlation_symbol] += self.noise_curves[correlation_symbol]
 
     def get_theory_correlations(self, config, correlation_symbols, cosmology_params=None, interpolate=False):
+        # TODO: refactor, double use
         # Get redshift distribution
         lotss_partial = partial(get_lotss_redshift_distribution, config=config, normalize=False)
         get_redshift_distribution_functions = {
@@ -550,25 +573,16 @@ class Experiment:
             # TODO: should include mask (?)
             'KiDS_QSO': partial(get_redshift_distribution, self.data.get('g'), n_bins=50, z_col='Z_PHOTO_QSO')
         }
-        self.get_redshift_dist_function = get_redshift_distribution_functions[config.lss_survey_name]
-        z_arr, n_arr = self.get_redshift_dist_function()
+        z_arr, n_arr = get_redshift_distribution_functions[config.lss_survey_name]()
 
         # Get cosmology
         cosmology = self.cosmology if ((not cosmology_params) or cosmology_params == self.cosmology_params) else \
             ccl.Cosmology(**cosmology_params)
 
         # Get bias
-        if config.bias_model == 'constant':
-            bias_arr = config.b_g * np.ones(len(z_arr))
-        elif config.bias_model == 'scaled':
-            bias_arr = config.b_g_scaled * np.ones(len(z_arr))
-            bias_arr = bias_arr / ccl.growth_factor(cosmology, 1. / (1. + z_arr))
-        elif config.bias_model == 'polynomial':
-            bias_params = [config.b_0, config.b_1, config.b_2]
-            bias_arr = sum(bias_params[i] * np.power(z_arr, i) for i in range(len(bias_params)))
-        elif config.bias_model == 'tomographer':
-            bias_arr = config.b_eff * np.ones(len(z_arr))
+        bias_arr = self.get_bias(z_arr, cosmology, config)
 
+        # Get tracers
         tracers_dict = {
             'g': ccl.NumberCountsTracer(cosmology, has_rsd=False, dndz=(z_arr, n_arr), bias=(z_arr, bias_arr)),
             'k': ccl.CMBLensingTracer(cosmology, 1091),
@@ -602,6 +616,24 @@ class Experiment:
 
             correlations_dict[correlation_symbol] = correlation
         return z_arr, n_arr, correlations_dict
+
+    def get_bias(self, z_arr, cosmology=None, config=None):
+        config = config if config else self.config
+        cosmology = cosmology if cosmology else self.cosmology
+
+        bias_arr = None
+        if config.bias_model == 'constant':
+            bias_arr = config.b_g * np.ones(len(z_arr))
+        elif config.bias_model == 'scaled':
+            bias_arr = config.b_g_scaled * np.ones(len(z_arr))
+            bias_arr = bias_arr / ccl.growth_factor(cosmology, 1. / (1. + z_arr))
+        elif config.bias_model == 'polynomial':
+            bias_params = [config.b_0, config.b_1, config.b_2]
+            bias_arr = sum(bias_params[i] * np.power(z_arr, i) for i in range(len(bias_params)))
+        elif config.bias_model == 'tomographer':
+            bias_arr = config.b_eff * np.ones(len(z_arr))
+
+        return bias_arr
 
     def set_binning(self):
         for correlation_symbol in self.correlation_symbols:

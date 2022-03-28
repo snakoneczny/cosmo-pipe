@@ -3,17 +3,60 @@ import os
 
 import emcee
 import numpy as np
-import pandas as pd
 from matplotlib import pyplot as plt
 from corner import corner
-import pyccl as ccl
 from tqdm import tqdm_notebook
 from copy import deepcopy
 
-from env_config import PROJECT_PATH, DATA_PATH
+from env_config import PROJECT_PATH
 from data_lotss import get_lotss_redshift_distribution
 from experiment import Experiment
 from utils import struct, decouple_correlation
+
+
+# TODO: refactor!
+def compare_results(experiments, data_name):
+    for experiment_name, experiment_label in experiments:
+        mcmc_folder_path = os.path.join(PROJECT_PATH, 'outputs/MCMC/{}/{}'.format(data_name, experiment_name))
+        mcmc_filepath = os.path.join(mcmc_folder_path, '{}.config.json'.format(experiment_name))
+        with open(mcmc_filepath) as file:
+            config = json.load(file)
+
+        labels = config['to_infere']
+        n_walkers = config['n_walkers']
+
+        backend_reader = emcee.backends.HDFBackend(os.path.join(mcmc_folder_path, '{}.h5'.format(experiment_name)))
+        emcee_sampler = emcee.EnsembleSampler(n_walkers, len(labels), None, backend=backend_reader)
+
+        tau = emcee_sampler.get_autocorr_time(tol=0)
+        burnin = int(2 * np.max(tau))
+        thin = int(0.5 * np.min(tau))
+        samples = emcee_sampler.get_chain(discard=burnin, flat=True, thin=thin)
+
+        # Final estimate
+        best_fit_params = {}
+        for i in range(len(labels)):
+            mcmc = np.percentile(samples[:, i], [16, 50, 84])
+            best_fit_params[labels[i]] = mcmc[1]
+
+        best_fit_config = deepcopy(config)
+        best_fit_config.update(best_fit_params)
+        best_fit_config = struct(**best_fit_config)
+        experiment = Experiment(best_fit_config, set_data=False, set_maps=False)
+
+        z_arr, n_arr = experiment.get_redshift_dist_function(z_max=6, normalize=True)
+        bias_arr = experiment.get_bias(z_arr)
+        n_arr *= bias_arr
+        # z_arr = np.log(z_arr + 1)
+
+        # TODO: subplots for log
+        plt.plot(z_arr, n_arr, label=experiment_label)
+
+    plt.axhline(y=0, color='gray', linestyle='-')
+    plt.legend()
+    plt.xlabel('z')
+    plt.ylabel('b * dN/dz')
+    plt.show()
 
 
 def show_mcmc_report(experiment_name, data_name, burnin=None, thin=None, quick=False):
@@ -57,7 +100,6 @@ def show_mcmc_report(experiment_name, data_name, burnin=None, thin=None, quick=F
     plot_mean_tau(tau_arr)
     mean_acceptance_fraction = np.mean(emcee_sampler.acceptance_fraction) * 100
     print('Mean acceptance fraction: {:.1f}%; burn-in: {}; thin: {}'.format(mean_acceptance_fraction, burnin, thin))
-    # print('Number of iterations: {}'.format(len(tau_arr)))
 
     # Samples history
     plot_samples_history(labels, samples, log_prob_samples)
@@ -89,7 +131,7 @@ def make_param_plots(config, arg_names, samples):
     # Iterate samples
     redshift_functions = []
     correlations = dict([(correlation_symbol, []) for correlation_symbol in experiment.correlation_symbols])
-    inds = np.random.randint(len(samples), size=200)
+    inds = np.random.randint(len(samples), size=100)
     for ind in tqdm_notebook(inds):
         # Update data params
         sample = samples[ind]
@@ -131,7 +173,7 @@ def make_param_plots(config, arg_names, samples):
         # Theory
         ell_arr = experiment.binnings[correlation_symbol].get_effective_ells()
         for correlation in correlations[correlation_symbol]:
-            plt.plot(ell_arr, correlation, 'C1', alpha=0.01)
+            plt.plot(ell_arr, correlation, 'C1', alpha=0.02)
 
         # Data
         noise = experiment.noise_decoupled[correlation_symbol]
@@ -160,14 +202,17 @@ def make_param_plots(config, arg_names, samples):
 
     # Plot redshift
     if len(redshift_functions) > 0:
+        # TODO: subplots for log
         for n_arr in redshift_functions:
-            plt.plot(z_arr, n_arr, 'C1', alpha=0.01)
+            plt.plot(z_arr, n_arr, 'C1', alpha=0.02)
 
         plt.errorbar(experiment.dz_to_fit, experiment.dn_dz_to_fit, experiment.dn_dz_err_to_fit, fmt='b.',
                      label=experiment.config.redshift_to_fit)
         plt.axhline(y=0, color='gray', linestyle='-')
 
         plt.legend()
+        plt.xlabel('z')
+        plt.ylabel('dN/dz')
         plt.show()
 
 

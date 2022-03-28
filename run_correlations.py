@@ -14,7 +14,7 @@ config = get_config(args.config_name)
 config.experiment_tag = args.tag
 config.read_data_correlations_flag = False
 config.read_covariance_flag = False
-config.fit_tomographer = False  # TODO: this will change
+config.redshift_to_fit = None
 print(config)
 
 # Iterate thorugh parameters

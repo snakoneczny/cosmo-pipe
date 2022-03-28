@@ -197,7 +197,7 @@ def read_lotss_noise_weight_map(nside, data_release, flux_min_cut, signal_to_noi
 
     folder = 'LoTSS/DR{}/weight_maps_randoms'
     file_path_in = os.path.join(DATA_PATH, folder, 'Randoms_input_Nside_{}_Fl_{:.1f}mJy.fits')
-    file_path_out = os.path.join(DATA_PATH, folder, 'Randoms_output_Nside_{}_SNR_{:.1f}_Fl_{:.1f}mJy_withoutFluxShift.fits')
+    file_path_out = os.path.join(DATA_PATH, folder, 'Randoms_output_Nside_{}_SNR_{:.1f}_Fl_{:.1f}mJy_withFluxShift.fits')
 
     file_path_in = file_path_in.format(data_release, nside, flux_min_cut)
     file_path_out = file_path_out.format(data_release, nside, signal_to_noise, flux_min_cut)
