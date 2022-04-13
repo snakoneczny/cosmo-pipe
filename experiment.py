@@ -88,7 +88,7 @@ class Experiment:
         self.config = config
 
         # Generate necessary correlation symbols
-        self.correlation_symbols = list(config.ells_per_bin.keys())
+        self.correlation_symbols = list(config.l_range.keys())
         self.map_symbols = list(set(''.join(self.correlation_symbols)))
         self.all_correlation_symbols = get_pairs(self.map_symbols)
 
@@ -129,7 +129,6 @@ class Experiment:
         if getattr(self.config, 'sigma8', None):
             self.cosmology_params['sigma8'] = self.config.sigma8
 
-        correlations_to_set = [x for x in self.all_correlation_symbols if x not in self.theory_correlations]
         self.cosmology = ccl.Cosmology(**self.cosmology_params)
 
     def set_dn_dz_function(self):
@@ -194,9 +193,18 @@ class Experiment:
         self.emcee_sampler = emcee.EnsembleSampler(n_walkers, n_dim, self.get_log_prob, backend=backend)
 
     def set_walkers_starting_params(self):
-        p0 = np.array(
-            [self.config.__dict__[key] if key in self.config.__dict__ else self.cosmology_params[key] for key in
-             self.config.to_infere])
+        p0 = []
+        for key in self.config.to_infere:
+            if key in self.config.__dict__:
+                p0.append(self.config.__dict__[key])
+            elif key in self.cosmology_params:
+                p0.append(self.cosmology_params[key])
+            elif key == 'Omega_m':
+                p0.append(self.cosmology_params['Omega_c'] + self.cosmology_params['Omega_b'])
+            else:
+                raise ValueError('No such parameter: {}'.format(key))
+
+        p0 = np.array(p0)
         p0_scales = p0 * 0.1
         n_dim = len(p0)
         self.p0_walkers = np.array(
@@ -213,21 +221,29 @@ class Experiment:
         to_update = dict(zip(self.arg_names, theta))
         config.__dict__.update(to_update)
 
+        # TODO: refactor Omega_m, refactor everything that is double used in mcmc report
         # Update cosmo parameters
         cosmology_params = deepcopy(self.cosmology_params)
-        param_names = [param_name for param_name in self.arg_names if param_name in self.cosmology_params]
+        cosmo_params = list(self.cosmology_params.keys()) + ['Omega_m']
+        param_names = [param_name for param_name in self.arg_names if param_name in cosmo_params]
         for param_name in param_names:
-            cosmology_params[param_name] = to_update[param_name]
+            if param_name == 'Omega_m':
+                baryon_fraction = 0.05 / 0.3
+                Omega_m = to_update['Omega_m']
+                cosmology_params['Omega_c'] = Omega_m * (1 - baryon_fraction)
+                cosmology_params['Omega_b'] = Omega_m * baryon_fraction
+            else:
+                cosmology_params[param_name] = to_update[param_name]
 
         # Get theory correlations and bin spectra using coupling matrices in workspaces
         try:
-            _, _, correlations_dict = self.get_theory_correlations(config, self.correlation_symbols, interpolate=False,
-                                                                   cosmology_params=cosmology_params)
+            _, _, correlations_dict = self.get_theory_correlations(config, self.config.correlations_to_use,
+                                                                   interpolate=False, cosmology_params=cosmology_params)
         except:
             return -np.inf
 
         model_correlations = []
-        for correlation_symbol in self.correlation_symbols:
+        for correlation_symbol in correlations_dict:
             correlation = decouple_correlation(self.workspaces[correlation_symbol],
                                                correlations_dict[correlation_symbol])
 
@@ -251,13 +267,15 @@ class Experiment:
 
     def get_log_prior(self, theta):
         prior_dict = {
+            'A_sn': (0.9, 1.1),
+            'A_z_tail': (0.5, 2.0),
+            'Omega_m': (0, np.inf),
+            'sigma8': (0, np.inf),
             'b_g': (0, np.inf),
             'b_g_scaled': (0, np.inf),
-            'A_sn': (0, np.inf),
-            'sigma8': (0, np.inf),
+            'z_sfg': (0, np.inf),
             'r': (0, np.inf),
             'n': (0, np.inf),
-            'z_sfg': (0, np.inf),
         }
 
         prior = 0
@@ -325,7 +343,7 @@ class Experiment:
                     np.diag(self.covariance_matrices[error_method][covariance_symbol]))
 
     def set_inference_covariance(self):
-        total_length = sum(self.n_ells.values())
+        total_length = sum([self.n_ells[key] for key in self.config.correlations_to_use])
 
         # TODO: move to data setting, here more general
         if self.config.redshift_to_fit == 'tomographer':
@@ -355,12 +373,12 @@ class Experiment:
         self.inference_covariance = np.zeros((total_length, total_length))
 
         a_start = 0
-        for i, corr_symbol_a in enumerate(self.correlation_symbols):
+        for i, corr_symbol_a in enumerate(self.config.correlations_to_use):
             bin_range_a = self.bin_range[corr_symbol_a]
             n_ells_a = self.n_ells[corr_symbol_a]
 
             b_start = 0
-            for j, corr_symbol_b in enumerate(self.correlation_symbols):
+            for j, corr_symbol_b in enumerate(self.config.correlations_to_use):
                 bin_range_b = self.bin_range[corr_symbol_b]
                 n_ells_b = self.n_ells[corr_symbol_b]
 
@@ -488,7 +506,7 @@ class Experiment:
 
     def set_data_vector(self):
         data_vectors = []
-        for correlation_symbol in self.correlation_symbols:
+        for correlation_symbol in self.config.correlations_to_use:
             # Subtract noise from data because theory spectra are created without noise during the sampling
             noise = self.noise_decoupled[correlation_symbol]
             bin_range = self.bin_range[correlation_symbol]
@@ -559,7 +577,8 @@ class Experiment:
         self.z_arr, self.n_arr, correlations_dict = self.get_theory_correlations(self.config, correlations_to_set)
         self.theory_correlations.update(correlations_dict)
 
-        for correlation_symbol in self.theory_correlations.keys():
+        # TODO: should include all theory correlations if gaussian covariance is to work
+        for correlation_symbol in self.correlation_symbols:
             self.theory_correlations[correlation_symbol] += self.noise_curves[correlation_symbol]
 
     def get_theory_correlations(self, config, correlation_symbols, cosmology_params=None, interpolate=False):
@@ -580,7 +599,7 @@ class Experiment:
             ccl.Cosmology(**cosmology_params)
 
         # Get bias
-        bias_arr = self.get_bias(z_arr, cosmology, config)
+        bias_arr = self.get_bias(z_arr, self.cosmology, config)
 
         # Get tracers
         tracers_dict = {

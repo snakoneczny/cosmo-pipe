@@ -136,16 +136,17 @@ def get_redshift_distributions(data_optical, data_skads):
     return redshift_distributions
 
 
-def get_lotss_redshift_distribution(config=None, z_tail=None, z_sfg=None, a=None, r=None, n=1, flux_cut=None,
-                                    model='power_law', z_max=6, z_arr=None, normalize=False):
+def get_lotss_redshift_distribution(config=None, model='power_law', z_sfg=None, a=None, r=None, n=1, z_tail=None,
+                                    flux_cut=None, A_z_tail=None, z_arr=None, z_max=6, normalize=False):
     if config:
-        z_tail = getattr(config, 'z_tail', None)
+        model = config.dn_dz_model
         z_sfg = getattr(config, 'z_sfg', None)
         a = getattr(config, 'a', None)
         r = getattr(config, 'r', None)
         n = getattr(config, 'n', None)
+        z_tail = getattr(config, 'z_tail', None)
         flux_cut = getattr(config, 'flux_min_cut', None)
-        model = config.dn_dz_model
+        A_z_tail = getattr(config, 'A_z_tail', None)
 
     if model == 'deep_fields':
         deepfields_file = 'LoTSS/DR2/pz_deepfields/Pz_booterrors_wsum_deepfields_{:.1f}mJy.fits'.format(flux_cut)
@@ -177,9 +178,12 @@ def get_lotss_redshift_distribution(config=None, z_tail=None, z_sfg=None, a=None
         else:
             raise Exception('Not known redshift distribution model: {}'.format(model))
 
-        if normalize:
-            area = simps(n_arr, z_arr)
-            n_arr /= area
+    if A_z_tail:
+        n_arr[z_arr > 3.5] *= A_z_tail
+
+    if normalize:
+        area = simps(n_arr, z_arr)
+        n_arr /= area
 
     return z_arr, n_arr
 

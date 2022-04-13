@@ -315,7 +315,8 @@ def get_config(config_name):
     config = config[config_name]
 
     # Dictionary fields, flatten to proper values
-    for key in ['z_tail', 'z_sfg', 'a', 'r', 'n', 'b_g', 'b_g_scaled', 'b_0', 'b_1', 'b_2', 'b_eff', 'A_sn']:
+    for key in ['z_tail', 'z_sfg', 'a', 'r', 'n', 'b_g', 'b_g_scaled', 'b_0', 'b_1', 'b_2', 'b_eff', 'A_sn',
+                'A_z_tail']:
         if key in config:
             config[key] = config[key][config['flux_min_cut']]
 

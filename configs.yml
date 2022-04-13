@@ -16,8 +16,8 @@ LoTSS_DR2:
   l_range: {
 #    gg: [102, 1602],
 #    gk: [52, 1752],
-    gg: [102, 752],
-    gk: [52, 802],
+    gg: [52, 252],  # 752
+    gk: [52, 252],  # 802
 #    gg: [2, 120],
 #    gt: [2, 120],
   }
@@ -28,21 +28,22 @@ LoTSS_DR2:
 #    gt: 16,
   }
 
-  dn_dz_model: 'deep_fields'  # 'deep_fields', 'z_tail', 'power_law', 'tomographer'
+  dn_dz_model: 'power_law'  # 'deep_fields', 'z_tail', 'power_law', 'tomographer'
   z_tail: {2: 1.3, 1.5: 0, 1: 1.0, 0.5: 1.0}
   # Lines: Dominik's fit to deep fields; my fit to tomographer; my fit to tomographer * D(z)
-#  z_sfg: {2: 0.13, 1.5: 0.13, 1: 0.14, 0.5: 0.15}
+  z_sfg: {2: 0.13, 1.5: 0.13, 1: 0.14, 0.5: 0.15}
 #  z_sfg: {2: 0.039, 1.5: 0.039}
-  z_sfg: {2: 0.038, 1.5: 0.037}
-#  a: {2: 4.66, 1.5: 6.64, 1: 4.60, 0.5: 4.56}
+#  z_sfg: {2: 0.038, 1.5: 0.037}
+  a: {2: 4.66, 1.5: 6.64, 1: 4.60, 0.5: 4.56}
 #  a: {2: 3.59, 1.5: 3.33}
-  a: {2: 4.45, 1.5: 4.20}
-#  r: {2: 0.94, 1.5: 0.92, 1: 0.90, 0.5: 0.93}
+#  a: {2: 4.45, 1.5: 4.20}
+  r: {2: 0.94, 1.5: 0.92, 1: 0.90, 0.5: 0.93}
 #  r: {2: 0.18, 1.5: 0.18}
-  r: {2: 0.18, 1.5: 0.19}
-#  n: {2: 1, 1.5: 1}
+#  r: {2: 0.18, 1.5: 0.19}
+  n: {2: 1, 1.5: 1}
 #  n: {2: 1, 1.5: 109298}
-  n: {2: 0, 1.5: 111252}
+#  n: {2: 0, 1.5: 111252}
+  A_z_tail: {1.5: 1}
 
   # Bias
   bias_model: 'scaled'
@@ -67,7 +68,8 @@ LoTSS_DR2:
   # Inference
   continue_sampling: False
   redshift_to_fit: deep_fields  # deep_fields, tomographer, None
-  to_infere: [sigma8, b_g, A_sn, z_sfg, a, r]
+  correlations_to_use: [gg, gk]
+  to_infere: [sigma8, b_g_scaled, A_sn, z_sfg, a, r]  # A_z_tail
   max_iterations: 100000
   n_walkers: 32
 

@@ -92,7 +92,9 @@ def show_mcmc_report(experiment_name, data_name, burnin=None, thin=None, quick=F
     # Corner plot
     truths = [None] * len(labels)
     if 'sigma8' in labels:
-        truths[labels.index('sigma8')] = 0.83
+        truths[labels.index('sigma8')] = 0.81
+    if 'Omega_m' in labels:
+        truths[labels.index('Omega_m')] = 0.31
     corner(samples, labels=labels, truths=truths)
     plt.show()
 
@@ -140,9 +142,16 @@ def make_param_plots(config, arg_names, samples):
 
         # Update cosmo parameters
         cosmology_params = deepcopy(experiment.cosmology_params)
-        param_names = [param_name for param_name in arg_names if param_name in experiment.cosmology_params]
+        cosmo_params = list(experiment.cosmology_params.keys()) + ['Omega_m']
+        param_names = [param_name for param_name in arg_names if param_name in cosmo_params]
         for param_name in param_names:
-            cosmology_params[param_name] = to_update[param_name]
+            if param_name == 'Omega_m':
+                baryon_fraction = 0.05 / 0.3
+                Omega_m = to_update['Omega_m']
+                cosmology_params['Omega_c'] = Omega_m * (1 - baryon_fraction)
+                cosmology_params['Omega_b'] = Omega_m * baryon_fraction
+            else:
+                cosmology_params[param_name] = to_update[param_name]
 
         # TODO: make sure later that cosmology is taken into account correctly
         # Add correlation function to samples stores
