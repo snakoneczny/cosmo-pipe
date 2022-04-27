@@ -4,9 +4,12 @@ import os
 import emcee
 import numpy as np
 from matplotlib import pyplot as plt
-from corner import corner
 from tqdm import tqdm_notebook
 from copy import deepcopy
+import zeus
+import h5py
+from scipy.interpolate import interp1d
+from corner import corner
 
 from env_config import PROJECT_PATH
 from data_lotss import get_lotss_redshift_distribution
@@ -59,27 +62,20 @@ def compare_results(experiments, data_name):
     plt.show()
 
 
-def show_mcmc_report(experiment_name, data_name, burnin=None, thin=None, quick=False):
+def show_mcmc_report(experiment_name, data_name, quick=False):
     mcmc_folder_path = os.path.join(PROJECT_PATH, 'outputs/MCMC/{}/{}'.format(data_name, experiment_name))
     mcmc_filepath = os.path.join(mcmc_folder_path, '{}.config.json'.format(experiment_name))
     with open(mcmc_filepath) as file:
         config = json.load(file)
-    labels = config['to_infere']
-    n_walkers = config['n_walkers']
 
-    backend_reader = emcee.backends.HDFBackend(os.path.join(mcmc_folder_path, '{}.h5'.format(experiment_name)))
-    tau_arr = np.load(os.path.join(mcmc_folder_path, '{}.tau.npy'.format(experiment_name)))
-    emcee_sampler = emcee.EnsembleSampler(n_walkers, len(labels), None, backend=backend_reader)
-
-    tau = emcee_sampler.get_autocorr_time(tol=0)
-    burnin = int(2 * np.max(tau)) if burnin is None else burnin
-    thin = int(0.5 * np.min(tau)) if thin is None else thin
-    samples = emcee_sampler.get_chain(discard=burnin, flat=True, thin=thin)
-    log_prob_samples = emcee_sampler.get_log_prob(discard=burnin, flat=True, thin=thin)
-    # log_prior_samples = sampler.get_blobs(discard=burnin, flat=True, thin=thin)
+    if config['mcmc_engine'] == 'emcee':
+        samples, log_prob_samples, tau_arr = get_emcee_samples(experiment_name, mcmc_folder_path, config)
+    elif config['mcmc_engine'] == 'zeus':
+        samples, log_prob_samples, tau_arr = get_zeus_samples(experiment_name, mcmc_folder_path)
 
     # Final estimate
     best_fit_params = {}
+    labels = config['to_infere']
     for i in range(len(labels)):
         mcmc = np.percentile(samples[:, i], [16, 50, 84])
         best_fit_params[labels[i]] = mcmc[1]
@@ -95,13 +91,14 @@ def show_mcmc_report(experiment_name, data_name, burnin=None, thin=None, quick=F
         truths[labels.index('sigma8')] = 0.81
     if 'Omega_m' in labels:
         truths[labels.index('Omega_m')] = 0.31
-    corner(samples, labels=labels, truths=truths)
+    # fig = corner(samples, labels=labels, truths=truths)
+    fig, axes = zeus.cornerplot(samples, labels=labels)  # , truth=truths)
     plt.show()
 
     # Tau plot
     plot_mean_tau(tau_arr)
-    mean_acceptance_fraction = np.mean(emcee_sampler.acceptance_fraction) * 100
-    print('Mean acceptance fraction: {:.1f}%; burn-in: {}; thin: {}'.format(mean_acceptance_fraction, burnin, thin))
+    # mean_acceptance_fraction = np.mean(emcee_sampler.acceptance_fraction) * 100
+    # print('Mean acceptance fraction: {:.1f}%; burn-in: {}; thin: {}'.format(mean_acceptance_fraction, burnin, thin))
 
     # Samples history
     plot_samples_history(labels, samples, log_prob_samples)
@@ -109,6 +106,45 @@ def show_mcmc_report(experiment_name, data_name, burnin=None, thin=None, quick=F
     # Correlation and redshift plots
     if not quick:
         make_param_plots(config, labels, samples)
+
+
+def get_zeus_samples(experiment_name, mcmc_folder_path):
+    with h5py.File(os.path.join(mcmc_folder_path, '{}.h5'.format(experiment_name)), 'r') as hf:
+        samples = np.copy(hf['samples'])
+        log_prob_samples = np.copy(hf['logprob'])
+    tau_arr = np.load(os.path.join(mcmc_folder_path, '{}.tau.npy'.format(experiment_name)))
+
+    # Resize tau array which is not calculated every interation
+    n_steps = samples.shape[0] / tau_arr.shape[0]
+    x_arr = np.arange(tau_arr.shape[0]) * n_steps
+    f = interp1d(x_arr, tau_arr)
+    tau_arr = f(np.arange(x_arr[-1]))
+
+    # burnin half
+    samples = samples[samples.shape[0] // 2:]
+    # TODO: thin
+    # flatten
+    samples = samples.reshape(-1, samples.shape[-1])
+
+    return samples, log_prob_samples, tau_arr
+
+
+def get_emcee_samples(experiment_name, mcmc_folder_path, config, burnin=None, thin=None):
+    labels = config['to_infere']
+    n_walkers = config['n_walkers']
+
+    backend_reader = emcee.backends.HDFBackend(os.path.join(mcmc_folder_path, '{}.h5'.format(experiment_name)))
+    tau_arr = np.load(os.path.join(mcmc_folder_path, '{}.tau.npy'.format(experiment_name)))
+    emcee_sampler = emcee.EnsembleSampler(n_walkers, len(labels), None, backend=backend_reader)
+
+    tau = emcee_sampler.get_autocorr_time(tol=0)
+    burnin = int(2 * np.max(tau)) if burnin is None else burnin
+    thin = int(0.5 * np.min(tau)) if thin is None else thin
+    samples = emcee_sampler.get_chain(discard=burnin, flat=True, thin=thin)
+    log_prob_samples = emcee_sampler.get_log_prob(discard=burnin, flat=True, thin=thin)
+    # log_prior_samples = sampler.get_blobs(discard=burnin, flat=True, thin=thin)
+
+    return samples, log_prob_samples, tau_arr
 
 
 def make_sigmas_report(config, best_fit_params):

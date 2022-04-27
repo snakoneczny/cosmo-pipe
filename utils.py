@@ -326,9 +326,9 @@ def get_config(config_name):
 # TODO: Save covariance matrices
 # TODO: move to experiment as static function
 def save_correlations(experiment):
-    experiment_name = get_correlations_filename(experiment)
+    correlations_filename = get_correlations_filename(experiment)
     file_path = os.path.join(
-        PROJECT_PATH, 'outputs/correlations/{}/{}.csv'.format(experiment.config.lss_survey_name, experiment_name))
+        PROJECT_PATH, 'outputs/correlations/{}/{}.csv'.format(experiment.config.lss_survey_name, correlations_filename))
     error_methods = experiment.covariance_matrices.keys()
 
     df = pd.DataFrame()
@@ -350,8 +350,8 @@ def save_correlations(experiment):
     df.to_csv(file_path, index=False)
     print('Correlations saved to: {}'.format(file_path))
 
-    folder_path = os.path.join(PROJECT_PATH, 'outputs/correlations/{}/{}_cov'.format(experiment.config.lss_survey_name,
-                                                                                     experiment_name, experiment_name))
+    folder_path = os.path.join(PROJECT_PATH, 'outputs/correlations/{}/{}_cov'.format(
+        experiment.config.lss_survey_name, correlations_filename, correlations_filename))
     if not os.path.exists(folder_path):
         os.mkdir(folder_path)
     for error_method in error_methods:
@@ -359,7 +359,7 @@ def save_correlations(experiment):
             for correlation_symbol_b in experiment.correlation_symbols:
                 covariance_symbol = '{}-{}'.format(correlation_symbol_a, correlation_symbol_b)
                 file_path = os.path.join(folder_path, '{}_cov-{}-{}.csv'.format(
-                    experiment_name, covariance_symbol, error_method))
+                    correlations_filename, covariance_symbol, error_method))
                 np.savetxt(file_path,
                            experiment.covariance_matrices[error_method][covariance_symbol], delimiter=',')
 

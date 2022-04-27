@@ -10,6 +10,7 @@ import pandas as pd
 import pymaster as nmt
 import pyccl as ccl
 import emcee
+import zeus
 import json
 import yaml
 from tqdm import tqdm
@@ -24,6 +25,18 @@ from data_nvss import get_nvss_map, get_nvss_redshift_distribution
 from data_kids_qso import get_kids_qsos, get_kids_qso_map
 from data_cmb import get_cmb_lensing_map, get_cmb_lensing_noise, get_cmb_temperature_map, \
     get_cmb_temperature_power_spectra
+
+
+class SaveStatisticsCallback:
+    def __init__(self, autocorr_callback, split_r_callback, filename='./chains.h5', ncheck=10):
+        self.directory = filename
+        self.ncheck = ncheck
+        self.autocorr_callback = autocorr_callback
+        self.split_r_callback = split_r_callback
+
+    def __call__(self, i, x, y):
+        if i % self.ncheck == 0:
+            np.save(self.directory, self.autocorr_callback.estimates)
 
 
 class Experiment:
@@ -71,7 +84,6 @@ class Experiment:
         self.data_vector = None
         self.inverted_covariance = None
         self.p0_walkers = None
-        self.emcee_sampler = None
         self.arg_names = None
         self.backend_filename = None
         self.tau_filename = None
@@ -84,30 +96,23 @@ class Experiment:
         self.are_maps_ready = False
         self.are_correlations_ready = False
 
-        # Set config
+        # Set constants
         self.config = config
-
-        # Generate necessary correlation symbols
+        self.arg_names = config.to_infere
         self.correlation_symbols = list(config.l_range.keys())
         self.map_symbols = list(set(''.join(self.correlation_symbols)))
         self.all_correlation_symbols = get_pairs(self.map_symbols)
 
-        # Create experiment name
-        self.arg_names = config.to_infere
-        experiment_name_parts = ['-'.join(self.correlation_symbols), '_'.join(self.arg_names)]
-        if hasattr(config, 'experiment_tag') and config.experiment_tag is not None and len(config.experiment_tag) > 0:
-            experiment_name_parts.append(config.experiment_tag)
-        self.experiment_name = '__'.join(experiment_name_parts)
+        self.set_name()
+        self.set_cosmology()
+        self.set_dn_dz_function()
 
-        # Set paths
         mcmc_folder = 'outputs/MCMC/{}/{}'.format(config.lss_survey_name, self.experiment_name)
         self.mcmc_folder = os.path.join(PROJECT_PATH, mcmc_folder)
-
-        # Initialize cosmology and bias_arr
-        self.set_cosmology()
-
-        # Define redshift distribution function
-        self.set_dn_dz_function()
+        self.mcmc_functions = {
+            'zeus': self.run_zeus_sampler,
+            'emcee': self.run_emcee_sampler,
+        }
 
         # Set maps and correlations
         if set_data:
@@ -117,80 +122,65 @@ class Experiment:
         if set_correlations:
             self.set_correlations()
 
-    def set_cosmology(self):
-        # Get cosmology params
-        with open(os.path.join(PROJECT_PATH, 'cosmologies.yml'), 'r') as cosmology_file:
-            self.cosmology_params = yaml.full_load(cosmology_file)[self.config.cosmology_name]
-        self.cosmology_params['matter_power_spectrum'] = self.config.cosmology_matter_power_spectrum
-
-        # TODO: make sure it's ok
-        # TODO: make list of cosmo params?
-        # TODO: iterate through things in self.cosmology_params, if present in self.config then change, remove cosmo params update
-        if getattr(self.config, 'sigma8', None):
-            self.cosmology_params['sigma8'] = self.config.sigma8
-
-        self.cosmology = ccl.Cosmology(**self.cosmology_params)
-
-    def set_dn_dz_function(self):
-        # TODO: refactor with set_theory_correlations piece of code
-        # Get redshift distribution
-        lotss_partial = partial(get_lotss_redshift_distribution, config=self.config, normalize=False)
-        get_redshift_distribution_functions = {
-            'LoTSS_DR2': lotss_partial,
-            'LoTSS_DR1': lotss_partial,
-            'NVSS': get_nvss_redshift_distribution,
-            # TODO: should include mask (?)
-            'KiDS_QSO': partial(get_redshift_distribution, self.data.get('g'), n_bins=50, z_col='Z_PHOTO_QSO'),
-        }
-        self.get_redshift_dist_function = get_redshift_distribution_functions[self.config.lss_survey_name]
-
-    def run_emcee(self):
+    def run_mcmc(self):
         assert self.are_correlations_ready
 
         if not os.path.exists(self.mcmc_folder):
             os.makedirs(self.mcmc_folder)
-        self.set_emcee_sampler()
+
+        self.backend_filename = os.path.join(self.mcmc_folder, '{}.h5'.format(self.experiment_name))
+        self.tau_filename = os.path.join(self.mcmc_folder, '{}.tau.npy'.format(self.experiment_name))
+        logger.info('Samples/backend file path: {}'.format(self.backend_filename))
+        logger.info('Autocorrelation time file path: {}'.format(self.tau_filename))
 
         config_file_path = os.path.join(self.mcmc_folder, '{}.config.json'.format(self.experiment_name))
         with open(config_file_path, 'w') as outfile:
             json.dump(self.config.__dict__, outfile)
             logger.info('Experiment config saved to: {}'.format(config_file_path))
 
-        tau_arr = np.load(self.tau_filename) if (
-                os.path.isfile(self.tau_filename) and self.config.continue_sampling) else np.array([])
-        if not self.config.continue_sampling:
-            self.emcee_sampler.reset()
-
-        for _ in self.emcee_sampler.sample(self.p0_walkers, iterations=self.config.max_iterations, progress=True):
-            tau = self.emcee_sampler.get_autocorr_time(tol=0)
-            tau_arr = np.append(tau_arr, [np.mean(tau)])
-            np.save(self.tau_filename, tau_arr)
-
-            if len(tau_arr) > 1:
-                tau_change = np.abs(tau_arr[-2] - tau) / tau
-                converged = np.all(tau * 100 < self.emcee_sampler.iteration)
-                converged &= np.all(tau_change < 0.01)
-                # if not self.emcee_sampler.iteration % 10:
-                # logger.info(
-                #     'Iteration: {}, tau: {}, tau change: {}'.format(self.emcee_sampler.iteration, np.around(tau, 1),
-                #                                                     np.around(tau_change, 3)))
-                if converged:
-                    break
-
-    def set_emcee_sampler(self):
         self.set_walkers_starting_params()
+        self.mcmc_functions[self.config.mcmc_engine]()
 
-        self.backend_filename = os.path.join(self.mcmc_folder, '{}.h5'.format(self.experiment_name))
-        self.tau_filename = os.path.join(self.mcmc_folder, '{}.tau.npy'.format(self.experiment_name))
-        logger.info('emcee backend file path: {}'.format(self.backend_filename))
-        logger.info('emcee tau file path: {}'.format(self.tau_filename))
+    def run_zeus_sampler(self):
+        n_walkers = self.p0_walkers.shape[0]
+        n_dim = self.p0_walkers.shape[1]
 
+        autocorr_cb = zeus.callbacks.AutocorrelationCallback(ncheck=10, dact=0.01, nact=50, discard=0.5)
+        split_r_cb = zeus.callbacks.SplitRCallback(ncheck=10, epsilon=0.01, nsplits=2, discard=0.5)
+        min_iter_cb = zeus.callbacks.MinIterCallback(nmin=500)
+        save_progress_cb = zeus.callbacks.SaveProgressCallback(self.backend_filename, ncheck=10)
+        save_stats_cb = SaveStatisticsCallback(autocorr_cb, split_r_cb, filename=self.tau_filename, ncheck=10)
+        callbacks = [autocorr_cb, split_r_cb, min_iter_cb, save_progress_cb, save_stats_cb]
+
+        sampler = zeus.EnsembleSampler(n_walkers, n_dim, self.get_log_prob)
+        sampler.run_mcmc(self.p0_walkers, self.config.max_iterations, callbacks=callbacks)
+        print(sampler.summary)
+
+    def run_emcee_sampler(self):
         n_walkers = self.p0_walkers.shape[0]
         n_dim = self.p0_walkers.shape[1]
         backend = emcee.backends.HDFBackend(self.backend_filename)
         if not self.config.continue_sampling:
             backend.reset(n_walkers, n_dim)
-        self.emcee_sampler = emcee.EnsembleSampler(n_walkers, n_dim, self.get_log_prob, backend=backend)
+        emcee_sampler = emcee.EnsembleSampler(n_walkers, n_dim, self.get_log_prob, backend=backend)
+
+        tau_arr = np.load(self.tau_filename) if (
+                os.path.isfile(self.tau_filename) and self.config.continue_sampling) else np.array([])
+
+        if not self.config.continue_sampling:
+            emcee_sampler.reset()
+
+        for _ in emcee_sampler.sample(self.p0_walkers, iterations=self.config.max_iterations, progress=True):
+            tau = emcee_sampler.get_autocorr_time(tol=0)
+            tau_arr = np.append(tau_arr, [np.mean(tau)])
+            np.save(self.tau_filename, tau_arr)
+
+            if len(tau_arr) > 1:
+                tau_change = np.abs(tau_arr[-2] - tau) / tau
+                converged = np.all(tau * 50 < emcee_sampler.iteration)
+                converged &= np.all(tau_change < 0.1)
+                if converged:
+                    break
 
     def set_walkers_starting_params(self):
         p0 = []
@@ -753,6 +743,54 @@ class Experiment:
         for correlation_symbol in self.correlation_symbols:
             print('C_{} sigma: {:.2f}'.format(correlation_symbol, self.sigmas[correlation_symbol]))
             print('C_{} chi squared: {:.2f}'.format(correlation_symbol, self.chi_squared[correlation_symbol]))
+
+    def set_cosmology(self):
+        # Get cosmology params
+        with open(os.path.join(PROJECT_PATH, 'cosmologies.yml'), 'r') as cosmology_file:
+            self.cosmology_params = yaml.full_load(cosmology_file)[self.config.cosmology_name]
+        self.cosmology_params['matter_power_spectrum'] = self.config.cosmology_matter_power_spectrum
+
+        # TODO: make sure it's ok
+        # TODO: make list of cosmo params?
+        # TODO: iterate through things in self.cosmology_params, if present in self.config then change, remove cosmo params update
+        if getattr(self.config, 'sigma8', None):
+            self.cosmology_params['sigma8'] = self.config.sigma8
+
+        self.cosmology = ccl.Cosmology(**self.cosmology_params)
+
+    def set_dn_dz_function(self):
+        # TODO: refactor with set_theory_correlations piece of code
+        # Get redshift distribution
+        lotss_partial = partial(get_lotss_redshift_distribution, config=self.config, normalize=False)
+        get_redshift_distribution_functions = {
+            'LoTSS_DR2': lotss_partial,
+            'LoTSS_DR1': lotss_partial,
+            'NVSS': get_nvss_redshift_distribution,
+            # TODO: should include mask (?)
+            'KiDS_QSO': partial(get_redshift_distribution, self.data.get('g'), n_bins=50, z_col='Z_PHOTO_QSO'),
+        }
+        self.get_redshift_dist_function = get_redshift_distribution_functions[self.config.lss_survey_name]
+
+    def set_name(self):
+        l_range = self.config.l_range['gg']
+        correlations_part = '_'.join([
+            '-'.join(self.correlation_symbols),
+            'ell-{}-{}'.format(l_range[0], l_range[1]),
+        ])
+
+        redshift_part = 'redshift_' + '-'.join(self.config.dn_dz_model.split('_'))
+        if self.config.redshift_to_fit:
+            redshift_part += '_' + '-'.join(self.config.redshift_to_fit.split('_'))
+
+        bias_part = 'bias_' + self.config.bias_model
+        mcmc_part = self.config.mcmc_engine + '_' + '_'.join(self.arg_names)
+        experiment_name_parts = [correlations_part, redshift_part, bias_part, mcmc_part]
+
+        if hasattr(self.config, 'experiment_tag') and self.config.experiment_tag is not None and len(
+                self.config.experiment_tag) > 0:
+            experiment_name_parts.append(self.config.experiment_tag)
+
+        self.experiment_name = '__'.join(experiment_name_parts)
 
 
 # TODO: should me berged with cosmologies.py and Experiment class

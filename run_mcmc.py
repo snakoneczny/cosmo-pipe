@@ -20,4 +20,4 @@ config.read_covariance_flag = True
 
 # Run emcee
 experiment = Experiment(config, set_data=True, set_maps=True, set_correlations=True)
-experiment.run_emcee()
+experiment.run_mcmc()
