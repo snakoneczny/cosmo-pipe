@@ -87,9 +87,9 @@ class Experiment:
         self.arg_names = None
         self.backend_filename = None
         self.tau_filename = None
-        self.dz_to_fit = None
-        self.dn_dz_to_fit = None
-        self.dn_dz_err_to_fit = None
+        self.dz_to_fit = []
+        self.dn_dz_to_fit = []
+        self.dn_dz_err_to_fit = []
 
         # Pipeline flags
         self.are_data_ready = False
@@ -244,9 +244,12 @@ class Experiment:
             model_correlations.append(correlation[bin_range[0]:bin_range[1]])
         model_correlations = np.concatenate(model_correlations)
 
-        if self.config.redshift_to_fit:
-            normalize = False if self.config.redshift_to_fit == 'tomographer' else True
-            _, n_arr = self.get_redshift_dist_function(config=config, z_arr=self.dz_to_fit, normalize=normalize)
+        for i, redshift_to_fit in enumerate(self.config.redshifts_to_fit):
+            normalize = False if redshift_to_fit == 'tomographer' else True
+            z_arr, n_arr = self.get_redshift_dist_function(config=config, z_arr=self.dz_to_fit[i], normalize=normalize)
+            if redshift_to_fit == 'tomographer' and self.config.fit_bias_to_tomo:
+                bias_arr = self.get_bias(z_arr, self.cosmology, config)
+                n_arr *= bias_arr
             model_correlations = np.append(model_correlations, n_arr)
 
         # Calculate log prob
@@ -263,6 +266,9 @@ class Experiment:
             'sigma8': (0, np.inf),
             'b_g': (0, np.inf),
             'b_g_scaled': (0, np.inf),
+            'b_0': (0, np.inf),
+            'b_1': (0, np.inf),
+            'b_2': (0, np.inf),
             'z_sfg': (0, np.inf),
             'r': (0, np.inf),
             'n': (0, np.inf),
@@ -336,30 +342,32 @@ class Experiment:
         total_length = sum([self.n_ells[key] for key in self.config.correlations_to_use])
 
         # TODO: move to data setting, here more general
-        if self.config.redshift_to_fit == 'tomographer':
-            tomographer_file = os.path.join(DATA_PATH, 'LoTSS/DR2/tomographer/{}mJy_{}SNR_srl_catalog_{}.csv'.format(
-                self.config.flux_min_cut, self.config.signal_to_noise, self.config.lss_mask_name.split('_')[1]))
-            tomographer = pd.read_csv(tomographer_file)
-            self.dz_to_fit = tomographer['z'][:-1]
-            self.dn_dz_to_fit = tomographer['dNdz_b'][:-1]
-            self.dn_dz_err_to_fit = tomographer['dNdz_b_err'][:-1]
+        for redshift_to_fit in self.config.redshifts_to_fit:
+            if redshift_to_fit == 'tomographer':
+                tomographer_file = os.path.join(DATA_PATH,
+                                                'LoTSS/DR2/tomographer/{}mJy_{}SNR_srl_catalog_{}.csv'.format(
+                                                    self.config.flux_min_cut, self.config.signal_to_noise,
+                                                    self.config.lss_mask_name.split('_')[1]))
+                tomographer = pd.read_csv(tomographer_file)
+                self.dz_to_fit.append(tomographer['z'][:-1])
+                self.dn_dz_to_fit.append(tomographer['dNdz_b'][:-1])
+                self.dn_dz_err_to_fit.append(tomographer['dNdz_b_err'][:-1])
 
-            # TODO: add other redshift distributions here, or just make use of the get_bias_function
-            if self.config.bias_model == 'scaled':
-                growth_factor = ccl.growth_factor(self.cosmology, 1. / (1. + self.dz_to_fit))
-                self.dn_dz_to_fit *= growth_factor
-                self.dn_dz_err_to_fit *= growth_factor
+                # Scale tomographer with D(z), it will allow to skip the scaling process in the get_log_prob function
+                if self.config.bias_model == 'scaled':
+                    growth_factor = ccl.growth_factor(self.cosmology, 1. / (1. + self.dz_to_fit[-1]))
+                    self.dn_dz_to_fit[-1] *= growth_factor
+                    self.dn_dz_err_to_fit[-1] *= growth_factor
 
-        elif self.config.redshift_to_fit == 'deep_fields':
-            deepfields_file = 'LoTSS/DR2/pz_deepfields/Pz_booterrors_wsum_deepfields_{:.1f}mJy.fits'.format(
-                self.config.flux_min_cut)
-            pz_deepfields = read_fits_to_pandas(os.path.join(DATA_PATH, deepfields_file))
-            self.dz_to_fit = pz_deepfields['zbins']
-            self.dn_dz_to_fit = pz_deepfields['pz_boot_mean']
-            self.dn_dz_err_to_fit = pz_deepfields['error_boot']
+            elif redshift_to_fit == 'deep_fields':
+                deepfields_file = 'LoTSS/DR2/pz_deepfields/Pz_booterrors_wsum_deepfields_{:.1f}mJy.fits'.format(
+                    self.config.flux_min_cut)
+                pz_deepfields = read_fits_to_pandas(os.path.join(DATA_PATH, deepfields_file))
+                self.dz_to_fit.append(pz_deepfields['zbins'])
+                self.dn_dz_to_fit.append(pz_deepfields['pz_boot_mean'])
+                self.dn_dz_err_to_fit.append(pz_deepfields['error_boot'])
 
-        if self.dz_to_fit is not None:
-            total_length += len(self.dz_to_fit)
+            total_length += len(self.dz_to_fit[-1])
         self.inference_covariance = np.zeros((total_length, total_length))
 
         a_start = 0
@@ -382,9 +390,12 @@ class Experiment:
                 b_start += n_ells_b
             a_start += n_ells_a
 
-        if self.config.redshift_to_fit:
-            n_dz_to_fit = len(self.dz_to_fit)
-            np.fill_diagonal(self.inference_covariance[-n_dz_to_fit:, -n_dz_to_fit:], self.dn_dz_err_to_fit ** 2)
+        for i, redshift_to_fit in enumerate(self.config.redshifts_to_fit):
+            n_dz_to_fit = len(self.dz_to_fit[i])
+            a_end = a_start + n_dz_to_fit
+            np.fill_diagonal(self.inference_covariance[a_start: a_end, a_start: a_end],
+                             self.dn_dz_err_to_fit[i] ** 2)
+            a_start += n_dz_to_fit
 
         self.inference_correlation = get_correlation_matrix(self.inference_covariance)
         self.inverted_covariance = np.linalg.inv(self.inference_covariance)
@@ -505,8 +516,8 @@ class Experiment:
             data_vectors.append(data_vector - noise)
         self.data_vector = np.concatenate(data_vectors)
 
-        if self.config.redshift_to_fit:
-            self.data_vector = np.append(self.data_vector, self.dn_dz_to_fit)
+        for i, redshift_to_fit in enumerate(self.config.redshifts_to_fit):
+            self.data_vector = np.append(self.data_vector, self.dn_dz_to_fit[i])
 
     def read_data_correlations(self):
         correlations_df = read_correlations(experiment=self)
@@ -636,7 +647,7 @@ class Experiment:
         elif config.bias_model == 'scaled':
             bias_arr = config.b_g_scaled * np.ones(len(z_arr))
             bias_arr = bias_arr / ccl.growth_factor(cosmology, 1. / (1. + z_arr))
-        elif config.bias_model == 'polynomial':
+        elif config.bias_model == 'quadratic':
             bias_params = [config.b_0, config.b_1, config.b_2]
             bias_arr = sum(bias_params[i] * np.power(z_arr, i) for i in range(len(bias_params)))
         elif config.bias_model == 'tomographer':
@@ -779,8 +790,8 @@ class Experiment:
         ])
 
         redshift_part = 'redshift_' + '-'.join(self.config.dn_dz_model.split('_'))
-        if self.config.redshift_to_fit:
-            redshift_part += '_' + '-'.join(self.config.redshift_to_fit.split('_'))
+        for redshift_to_fit in self.config.redshifts_to_fit:
+            redshift_part += '_' + '-'.join(redshift_to_fit.split('_'))
 
         bias_part = 'bias_' + self.config.bias_model
         mcmc_part = self.config.mcmc_engine + '_' + '_'.join(self.arg_names)

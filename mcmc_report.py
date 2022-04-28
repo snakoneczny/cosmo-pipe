@@ -1,5 +1,7 @@
 import json
 import os
+from collections import defaultdict
+from random import random, sample
 
 import emcee
 import numpy as np
@@ -9,7 +11,6 @@ from copy import deepcopy
 import zeus
 import h5py
 from scipy.interpolate import interp1d
-from corner import corner
 
 from env_config import PROJECT_PATH
 from data_lotss import get_lotss_redshift_distribution
@@ -17,8 +18,58 @@ from experiment import Experiment
 from utils import struct, decouple_correlation
 
 
+def compare_biases(experiments, data_name, x_scale='log', x_max=None, y_max=None):
+    for experiment_name, experiment_label in experiments:
+        mcmc_folder_path = os.path.join(PROJECT_PATH, 'outputs/MCMC/{}/{}'.format(data_name, experiment_name))
+        mcmc_filepath = os.path.join(mcmc_folder_path, '{}.config.json'.format(experiment_name))
+        with open(mcmc_filepath) as file:
+            config = json.load(file)
+
+        if 'mcmc_engine' in config and config['mcmc_engine'] == 'zeus':
+            samples, _, _, _, _ = get_zeus_samples(experiment_name, mcmc_folder_path)
+        else:
+            _, samples, _, _, _, _ = get_emcee_samples(experiment_name, mcmc_folder_path, config)
+
+        # Final estimate
+        best_fit_params = {}
+        best_fit_params_min = {}
+        best_fit_params_max = {}
+        labels = config['to_infere']
+        for i in range(len(labels)):
+            mcmc = np.percentile(samples[:, i], [16, 50, 84])
+            best_fit_params[labels[i]] = mcmc[1]
+            best_fit_params_min[labels[i]] = mcmc[0]
+            best_fit_params_max[labels[i]] = mcmc[2]
+
+        config_mean = struct(**config)
+        config_min = struct(**config)
+        config_max = struct(**config)
+        config_mean.__dict__.update(best_fit_params)
+        config_min.__dict__.update(best_fit_params_min)
+        config_max.__dict__.update(best_fit_params_max)
+
+        experiment = Experiment(config_mean, set_data=False, set_maps=False)
+        z_arr, _ = experiment.get_redshift_dist_function(config=config_mean, normalize=False)
+        if x_max:
+            z_arr = z_arr[z_arr < x_max]
+        bias_arr = experiment.get_bias(z_arr, config=config_mean)
+        bias_arr_min = experiment.get_bias(z_arr, config=config_min)
+        bias_arr_max = experiment.get_bias(z_arr, config=config_max)
+
+        if x_scale == 'log':
+            z_arr = np.log(z_arr + 1)
+        plt.plot(z_arr, bias_arr, label=experiment_label)
+        plt.fill_between(z_arr, bias_arr_min, bias_arr_max, alpha=0.2)
+
+    plt.legend(loc='upper left')
+    plt.xlabel('log(1 + z)' if x_scale == 'log' else 'z')
+    plt.ylabel('$b_g(z)$')
+    plt.ylim((None, y_max))
+    plt.show()
+
+
 # TODO: refactor!
-def compare_results(experiments, data_name):
+def compare_redshifts(experiments, data_name):
     for experiment_name, experiment_label in experiments:
         mcmc_folder_path = os.path.join(PROJECT_PATH, 'outputs/MCMC/{}/{}'.format(data_name, experiment_name))
         mcmc_filepath = os.path.join(mcmc_folder_path, '{}.config.json'.format(experiment_name))
@@ -69,9 +120,10 @@ def show_mcmc_report(experiment_name, data_name, quick=False):
         config = json.load(file)
 
     if config['mcmc_engine'] == 'emcee':
-        samples, log_prob_samples, tau_arr = get_emcee_samples(experiment_name, mcmc_folder_path, config)
+        emcee_sampler, samples, log_prob_samples, tau_arr, burnin, thin = get_emcee_samples(
+            experiment_name, mcmc_folder_path, config)
     elif config['mcmc_engine'] == 'zeus':
-        samples, log_prob_samples, tau_arr = get_zeus_samples(experiment_name, mcmc_folder_path)
+        samples, log_prob_samples, tau_arr, burnin, thin = get_zeus_samples(experiment_name, mcmc_folder_path)
 
     # Final estimate
     best_fit_params = {}
@@ -91,24 +143,29 @@ def show_mcmc_report(experiment_name, data_name, quick=False):
         truths[labels.index('sigma8')] = 0.81
     if 'Omega_m' in labels:
         truths[labels.index('Omega_m')] = 0.31
-    # fig = corner(samples, labels=labels, truths=truths)
-    fig, axes = zeus.cornerplot(samples, labels=labels)  # , truth=truths)
+    _, _ = zeus.cornerplot(samples, labels=labels)  # , truth=truths)
+    # _ = corner(samples, labels=labels, truths=truths)
     plt.show()
 
-    # Tau plot
+    # Tau statistics
     plot_mean_tau(tau_arr)
-    # mean_acceptance_fraction = np.mean(emcee_sampler.acceptance_fraction) * 100
-    # print('Mean acceptance fraction: {:.1f}%; burn-in: {}; thin: {}'.format(mean_acceptance_fraction, burnin, thin))
+    print('Burn-in: {}; thin: {}'.format(burnin, thin))
+    if config['mcmc_engine'] == 'emcee':
+        mean_acceptance_fraction = np.mean(emcee_sampler.acceptance_fraction) * 100
+        print('Mean acceptance fraction: {:.1f}%'.format(mean_acceptance_fraction))
 
     # Samples history
     plot_samples_history(labels, samples, log_prob_samples)
 
-    # Correlation and redshift plots
+    # Correlation, redshift and bias plots
     if not quick:
         make_param_plots(config, labels, samples)
 
 
 def get_zeus_samples(experiment_name, mcmc_folder_path):
+    burnin = 0.5
+    thin = 2
+
     with h5py.File(os.path.join(mcmc_folder_path, '{}.h5'.format(experiment_name)), 'r') as hf:
         samples = np.copy(hf['samples'])
         log_prob_samples = np.copy(hf['logprob'])
@@ -120,13 +177,13 @@ def get_zeus_samples(experiment_name, mcmc_folder_path):
     f = interp1d(x_arr, tau_arr)
     tau_arr = f(np.arange(x_arr[-1]))
 
-    # burnin half
-    samples = samples[samples.shape[0] // 2:]
-    # TODO: thin
-    # flatten
+    # burnin, thin, flatten
+    random.seed(235742)
+    samples = samples[samples.shape[0] // (1 / burnin):]
+    samples = sample(samples, int(samples.shape[0] / thin))
     samples = samples.reshape(-1, samples.shape[-1])
 
-    return samples, log_prob_samples, tau_arr
+    return samples, log_prob_samples, tau_arr, burnin, thin
 
 
 def get_emcee_samples(experiment_name, mcmc_folder_path, config, burnin=None, thin=None):
@@ -144,7 +201,7 @@ def get_emcee_samples(experiment_name, mcmc_folder_path, config, burnin=None, th
     log_prob_samples = emcee_sampler.get_log_prob(discard=burnin, flat=True, thin=thin)
     # log_prior_samples = sampler.get_blobs(discard=burnin, flat=True, thin=thin)
 
-    return samples, log_prob_samples, tau_arr
+    return emcee_sampler, samples, log_prob_samples, tau_arr, burnin, thin
 
 
 def make_sigmas_report(config, best_fit_params):
@@ -167,8 +224,9 @@ def make_param_plots(config, arg_names, samples):
     experiment.set_correlations(with_covariance=True)
 
     # Iterate samples
-    redshift_functions = []
-    correlations = dict([(correlation_symbol, []) for correlation_symbol in experiment.correlation_symbols])
+    redshift_functions_store = defaultdict(list)
+    correlations_store = dict([(correlation_symbol, []) for correlation_symbol in experiment.correlation_symbols])
+    bias_arr_store = []
     inds = np.random.randint(len(samples), size=100)
     for ind in tqdm_notebook(inds):
         # Update data params
@@ -204,20 +262,27 @@ def make_param_plots(config, arg_names, samples):
 
         # Store it
         for correlation_symbol in correlations_dict:
-            correlations[correlation_symbol].append(correlations_dict[correlation_symbol])
+            correlations_store[correlation_symbol].append(correlations_dict[correlation_symbol])
 
         # Store redshift distribution
-        if experiment.config.redshift_to_fit:
-            normalize = False if experiment.config.redshift_to_fit == 'tomographer' else True
+        for redshift_to_fit in experiment.config.redshifts_to_fit:
+            normalize = False if redshift_to_fit == 'tomographer' else True
             z_arr, n_arr = get_lotss_redshift_distribution(config=config, normalize=normalize)
-            redshift_functions.append(n_arr)
+            if redshift_to_fit == 'tomographer' and config.fit_bias_to_tomo:
+                bias_arr = experiment.get_bias(z_arr, experiment.cosmology, config)
+                n_arr *= bias_arr
+            redshift_functions_store[redshift_to_fit].append(n_arr)
+
+        # Store bias function
+        z_arr, _ = get_lotss_redshift_distribution(config=config, normalize=False)
+        bias_arr_store.append(experiment.get_bias(z_arr, experiment.cosmology, config))
 
     # Plot correlations
     for correlation_symbol in experiment.correlation_symbols:
 
         # Theory
         ell_arr = experiment.binnings[correlation_symbol].get_effective_ells()
-        for correlation in correlations[correlation_symbol]:
+        for correlation in correlations_store[correlation_symbol]:
             plt.plot(ell_arr, correlation, 'C1', alpha=0.02)
 
         # Data
@@ -246,19 +311,26 @@ def make_param_plots(config, arg_names, samples):
         plt.show()
 
     # Plot redshift
-    if len(redshift_functions) > 0:
+    for i, (redshift_to_fit, redshift_function_arr) in enumerate(redshift_functions_store.items()):
         # TODO: subplots for log
-        for n_arr in redshift_functions:
+        for n_arr in redshift_function_arr:
             plt.plot(z_arr, n_arr, 'C1', alpha=0.02)
 
-        plt.errorbar(experiment.dz_to_fit, experiment.dn_dz_to_fit, experiment.dn_dz_err_to_fit, fmt='b.',
-                     label=experiment.config.redshift_to_fit)
+        plt.errorbar(experiment.dz_to_fit[i], experiment.dn_dz_to_fit[i], experiment.dn_dz_err_to_fit[i], fmt='b.',
+                     label=redshift_to_fit)
         plt.axhline(y=0, color='gray', linestyle='-')
 
         plt.legend()
         plt.xlabel('z')
         plt.ylabel('dN/dz')
         plt.show()
+
+    # Plot bias
+    for bias_arr in bias_arr_store:
+        plt.plot(z_arr, bias_arr, 'C1', alpha=0.02)
+        plt.xlabel('z')
+        plt.ylabel('b')
+    plt.show()
 
 
 def plot_mean_tau(autocorr_time_arr):
