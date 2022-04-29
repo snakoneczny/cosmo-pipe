@@ -3,7 +3,6 @@ from collections import defaultdict
 from functools import partial
 import math
 from copy import deepcopy
-from collections import OrderedDict
 
 import numpy as np
 import pandas as pd
@@ -17,13 +16,13 @@ from tqdm import tqdm
 from scipy.interpolate import interp1d
 
 from env_config import PROJECT_PATH, DATA_PATH
-from utils import logger, process_to_overdensity_map, get_pairs, get_correlation_matrix, \
-    get_redshift_distribution, get_chi_squared, decouple_correlation, read_correlations, \
-    get_corr_mean_diff, get_correlations, get_jackknife_masks, read_covariances, read_fits_to_pandas
+from utils import logger, process_to_overdensity_map, get_pairs, get_correlation_matrix, get_redshift_distribution,\
+    get_chi_squared, decouple_correlation, read_correlations, get_corr_mean_diff, get_correlations,\
+    get_jackknife_masks, read_covariances, read_fits_to_pandas
 from data_lotss import get_lotss_data, get_lotss_map, get_lotss_redshift_distribution, LOTSS_JACKKNIFE_REGIONS
 from data_nvss import get_nvss_map, get_nvss_redshift_distribution
 from data_kids_qso import get_kids_qsos, get_kids_qso_map
-from data_cmb import get_cmb_lensing_map, get_cmb_lensing_noise, get_cmb_temperature_map, \
+from data_cmb import get_cmb_lensing_map, get_cmb_lensing_noise, get_cmb_temperature_map,\
     get_cmb_temperature_power_spectra
 
 
@@ -206,24 +205,18 @@ class Experiment:
         if not np.isfinite(log_prior):
             return -np.inf
 
-        # Update data parameters
+        # Update parameters
         config = deepcopy(self.config)
         to_update = dict(zip(self.arg_names, theta))
         config.__dict__.update(to_update)
+        cosmology_params = self.get_updated_cosmology_parameters(to_update)
 
-        # TODO: refactor Omega_m, refactor everything that is double used in mcmc report
-        # Update cosmo parameters
-        cosmology_params = deepcopy(self.cosmology_params)
-        cosmo_params = list(self.cosmology_params.keys()) + ['Omega_m']
-        param_names = [param_name for param_name in self.arg_names if param_name in cosmo_params]
-        for param_name in param_names:
-            if param_name == 'Omega_m':
-                baryon_fraction = 0.05 / 0.3
-                Omega_m = to_update['Omega_m']
-                cosmology_params['Omega_c'] = Omega_m * (1 - baryon_fraction)
-                cosmology_params['Omega_b'] = Omega_m * baryon_fraction
-            else:
-                cosmology_params[param_name] = to_update[param_name]
+        # Check the bias prior if present
+        if self.config.fit_bias_to_tomo:
+            z_arr, n_arr = self.get_redshift_dist_function(config=config, normalize=False)
+            bias_arr = self.get_bias(z_arr, self.cosmology, config)
+            if (bias_arr <= 0).any():
+                return -np.inf
 
         # Get theory correlations and bin spectra using coupling matrices in workspaces
         try:
@@ -260,15 +253,15 @@ class Experiment:
 
     def get_log_prior(self, theta):
         prior_dict = {
-            'A_sn': (0.9, 1.1),
+            'A_sn': (-np.inf, np.inf),
             'A_z_tail': (0.5, 2.0),
             'Omega_m': (0, np.inf),
             'sigma8': (0, np.inf),
             'b_g': (0, np.inf),
             'b_g_scaled': (0, np.inf),
-            'b_0': (0, np.inf),
-            'b_1': (0, np.inf),
-            'b_2': (0, np.inf),
+            'b_0': (-np.inf, np.inf),
+            'b_1': (-np.inf, np.inf),
+            'b_2': (-np.inf, np.inf),
             'z_sfg': (0, np.inf),
             'r': (0, np.inf),
             'n': (0, np.inf),
@@ -284,7 +277,21 @@ class Experiment:
 
         return prior
 
-    def set_correlations(self, with_covariance=True):
+    def get_updated_cosmology_parameters(self, to_update):
+        cosmology_params = deepcopy(self.cosmology_params)
+        params_to_update = list(cosmology_params) + ['Omega_m']
+        params_to_update = [name for name in self.arg_names if name in params_to_update]
+        for param_name in params_to_update:
+            if param_name == 'Omega_m':
+                baryon_fraction = 0.05 / 0.3
+                Omega_m = to_update['Omega_m']
+                cosmology_params['Omega_c'] = Omega_m * (1 - baryon_fraction)
+                cosmology_params['Omega_b'] = Omega_m * baryon_fraction
+            else:
+                cosmology_params[param_name] = to_update[param_name]
+        return cosmology_params
+
+    def set_correlations(self):
         # assert self.are_maps_ready or self.config.read_correlations_flag
         self.set_binning()
 
@@ -298,8 +305,7 @@ class Experiment:
         self.set_theory_correlations()
 
         logger.info('Setting covariance..')
-        # TODO: remove with_covariance flag
-        if self.config.read_covariance_flag and with_covariance:
+        if self.config.read_covariance_flag:
             self.covariance_matrices = read_covariances(self)
         else:
             self.set_gauss_covariance()
@@ -541,33 +547,24 @@ class Experiment:
                              self.noise_curves, self.noise_decoupled)
 
         # Scale auto-correlations for LoTSS DR2 non-optical data
-        # TODO: what about scaling gg in case of gt? is it needed? probably not
-        # TODO: refactor?
         self.with_multicomp_noise = (
                 self.config.lss_survey_name == 'LoTSS_DR2'
                 and not self.config.is_optical
                 and not self.config.lss_mask_name == 'mask_optical'
-                and 'gt' not in self.correlation_symbols
                 and 'gg' in self.correlation_symbols
         )
         if self.with_multicomp_noise:
-            # TODO: use get correlations filename function
-            fname_template = 'LoTSS_DR2/LoTSS_DR2_{}__{}__{}mJy_snr={}_nside={}_gg-gk_bin={}'
-            fname_optical = fname_template.format(
-                'opt', 'mask_optical', self.config.flux_min_cut, self.config.signal_to_noise, self.config.nside,
-                self.config.ells_per_bin['gg']
-            )
-            fname_srl = fname_template.format(
-                'srl', 'mask_optical', self.config.flux_min_cut, self.config.signal_to_noise, self.config.nside,
-                self.config.ells_per_bin['gg']
-            )
-            corr_optical = read_correlations(filename=fname_optical)
-            corr_srl = read_correlations(filename=fname_srl)
-            if corr_optical is not None and corr_srl is not None:
-                self.multicomp_noise, self.multicomp_noise_err = get_corr_mean_diff(corr_srl, corr_optical,
-                                                                                    self.bin_range['gg'])
-                self.noise_decoupled['gg'] += self.multicomp_noise
-                self.noise_curves['gg'] += self.multicomp_noise
+            config_tmp = deepcopy(self.config)
+            config_tmp.lss_mask_name = 'mask_optical'
+            config_tmp.is_optical = True
+            corr_optical = read_correlations(config=config_tmp)
+            config_tmp.is_optical = False
+            corr_srl = read_correlations(config=config_tmp)
+
+            self.multicomp_noise, self.multicomp_noise_err = get_corr_mean_diff(corr_srl, corr_optical,
+                                                                                self.bin_range['gg'])
+            self.noise_decoupled['gg'] += self.multicomp_noise
+            self.noise_curves['gg'] += self.multicomp_noise
 
         # Once multicomponent shot noise is added, use A_sn to change amplitude to shot noise
         self.noise_decoupled['gg'] *= self.config.A_sn
@@ -583,17 +580,8 @@ class Experiment:
             self.theory_correlations[correlation_symbol] += self.noise_curves[correlation_symbol]
 
     def get_theory_correlations(self, config, correlation_symbols, cosmology_params=None, interpolate=False):
-        # TODO: refactor, double use
         # Get redshift distribution
-        lotss_partial = partial(get_lotss_redshift_distribution, config=config, normalize=False)
-        get_redshift_distribution_functions = {
-            'LoTSS_DR2': lotss_partial,
-            'LoTSS_DR1': lotss_partial,
-            'NVSS': get_nvss_redshift_distribution,
-            # TODO: should include mask (?)
-            'KiDS_QSO': partial(get_redshift_distribution, self.data.get('g'), n_bins=50, z_col='Z_PHOTO_QSO')
-        }
-        z_arr, n_arr = get_redshift_distribution_functions[config.lss_survey_name]()
+        z_arr, n_arr = self.get_redshift_dist_function(config=config)
 
         # Get cosmology
         cosmology = self.cosmology if ((not cosmology_params) or cosmology_params == self.cosmology_params) else \
@@ -761,23 +749,19 @@ class Experiment:
             self.cosmology_params = yaml.full_load(cosmology_file)[self.config.cosmology_name]
         self.cosmology_params['matter_power_spectrum'] = self.config.cosmology_matter_power_spectrum
 
-        # TODO: make sure it's ok
-        # TODO: make list of cosmo params?
-        # TODO: iterate through things in self.cosmology_params, if present in self.config then change, remove cosmo params update
+        # TODO: iterate through self.cosmology_params, if present in self.config then change, remove cosmo params update
         if getattr(self.config, 'sigma8', None):
             self.cosmology_params['sigma8'] = self.config.sigma8
 
         self.cosmology = ccl.Cosmology(**self.cosmology_params)
 
     def set_dn_dz_function(self):
-        # TODO: refactor with set_theory_correlations piece of code
         # Get redshift distribution
         lotss_partial = partial(get_lotss_redshift_distribution, config=self.config, normalize=False)
         get_redshift_distribution_functions = {
             'LoTSS_DR2': lotss_partial,
             'LoTSS_DR1': lotss_partial,
             'NVSS': get_nvss_redshift_distribution,
-            # TODO: should include mask (?)
             'KiDS_QSO': partial(get_redshift_distribution, self.data.get('g'), n_bins=50, z_col='Z_PHOTO_QSO'),
         }
         self.get_redshift_dist_function = get_redshift_distribution_functions[self.config.lss_survey_name]
@@ -802,36 +786,3 @@ class Experiment:
             experiment_name_parts.append(self.config.experiment_tag)
 
         self.experiment_name = '__'.join(experiment_name_parts)
-
-
-# TODO: should me berged with cosmologies.py and Experiment class
-def run_experiments(config, params_to_update, recalculate_data=False, recalculate_maps=False, with_covariance=True):
-    # Create base experiment to prepare data which is common for all experiments
-    experiment_base = Experiment(config)
-    if not recalculate_data:
-        experiment_base.set_data()
-    if not recalculate_maps:
-        experiment_base.set_maps()
-
-    # TODO: many params simultaneously
-    # Iterate through the parameters
-    experiments = OrderedDict()
-    for param_name, param_arr in params_to_update.items():
-        for param_val in tqdm(param_arr):
-            # TODO: hack
-            label = param_val if not isinstance(param_val, dict) else list(param_val.values())[0]
-
-            # Update experiment parameters
-            experiments[label] = copy.deepcopy(experiment_base)
-            setattr(experiments[label], param_name, param_val)
-
-            # Set data if not done previously
-            if recalculate_data:
-                experiments[label].set_data()
-            if recalculate_maps:
-                experiments[label].set_maps()
-
-            # Set correlations, necessary for every experiment
-            experiments[label].set_correlations(with_covariance=with_covariance)
-
-    return experiments

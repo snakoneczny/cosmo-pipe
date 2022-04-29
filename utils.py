@@ -364,17 +364,17 @@ def save_correlations(experiment):
                            experiment.covariance_matrices[error_method][covariance_symbol], delimiter=',')
 
 
-def read_correlations(filename=None, experiment=None):
-    if experiment:
-        experiment_name = get_correlations_filename(experiment)
-        filename = '{}/{}'.format(experiment.config.lss_survey_name, experiment_name)
+def read_correlations(filename=None, config=None):
+    if config:
+        experiment_name = get_correlations_filename(config)
+        filename = '{}/{}'.format(config.lss_survey_name, experiment_name)
     file_path = os.path.join(PROJECT_PATH, 'outputs/correlations/{}.csv'.format(filename))
     correlations = pd.read_csv(file_path)
     return correlations
 
 
 def read_covariances(experiment):
-    experiment_name = get_correlations_filename(experiment)
+    experiment_name = get_correlations_filename(experiment.config)
     filename = '{}/{}'.format(experiment.config.lss_survey_name, experiment_name)
     error_methods = ['gauss', 'jackknife'] if experiment.config.error_method == 'jackknife' else ['gauss']
     covariance_matrices = dict([(error_method, {}) for error_method in error_methods])
@@ -389,11 +389,11 @@ def read_covariances(experiment):
     return covariance_matrices
 
 
-def get_correlations_filename(experiment):
-    config = experiment.config
+def get_correlations_filename(config):
     optical_name = 'opt' if config.is_optical else 'srl'
+    correlation_symbols = list(config.l_range.keys())
     experiment_name = '{}_{}__{}__{}mJy_snr={}_nside={}_{}_bin={}'.format(
         config.lss_survey_name, optical_name, config.lss_mask_name, config.flux_min_cut, config.signal_to_noise,
-        config.nside, '-'.join(experiment.correlation_symbols), config.ells_per_bin['gg']
+        config.nside, '-'.join(correlation_symbols), config.ells_per_bin['gg']
     )
     return experiment_name

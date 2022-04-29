@@ -29,7 +29,7 @@ for flux_min_cut in [1.5]:
         config.lss_mask_name = 'mask_optical'
 
         experiment = Experiment(config, set_data=True, set_maps=True)
-        experiment.set_correlations(with_covariance=True)
+        experiment.set_correlations()
         save_correlations(experiment)
 
         # Radio in optical field
@@ -37,7 +37,7 @@ for flux_min_cut in [1.5]:
         config.lss_mask_name = 'mask_optical'
 
         experiment = Experiment(config, set_data=True, set_maps=True)
-        experiment.set_correlations(with_covariance=True)
+        experiment.set_correlations()
         save_correlations(experiment)
 
         # Radio in inner mask
@@ -45,5 +45,5 @@ for flux_min_cut in [1.5]:
         config.lss_mask_name = 'mask_inner'
 
         experiment = Experiment(config, set_data=True, set_maps=True)
-        experiment.set_correlations(with_covariance=True)
+        experiment.set_correlations()
         save_correlations(experiment)
