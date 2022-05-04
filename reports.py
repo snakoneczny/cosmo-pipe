@@ -2,6 +2,8 @@ import json
 import os
 from collections import defaultdict
 from random import random, sample
+import warnings
+import logging
 
 import emcee
 import numpy as np
@@ -10,7 +12,8 @@ from tqdm import tqdm_notebook
 from copy import deepcopy
 import h5py
 from scipy.interpolate import interp1d
-from getdist import MCSamples, plots
+# from getdist import MCSamples, plots
+import zeus
 
 from env_config import PROJECT_PATH
 from data_lotss import get_lotss_redshift_distribution
@@ -92,9 +95,10 @@ def compare_redshifts(experiments, data_name):
 
 
 def show_mcmc_report(experiment_name, data_name, quick=False):
-    config, samples, log_prob_samples, tau_arr = get_samples(experiment_name, data_name, print_stats=True)
+    logging.basicConfig(level=os.environ.get('LOGLEVEL', 'ERROR'))
 
     # Final estimate
+    config, samples, log_prob_samples, tau_arr = get_samples(experiment_name, data_name, print_stats=True)
     best_fit_params = {}
     labels = config['to_infere']
     print('------------------------------')
@@ -114,11 +118,17 @@ def show_mcmc_report(experiment_name, data_name, quick=False):
     #     truths[labels.index('sigma8')] = 0.81
     # if 'Omega_m' in labels:
     #     truths[labels.index('Omega_m')] = 0.31
-    # _, _ = zeus.cornerplot(samples, labels=labels)  # , truth=truths)
+
+    samples_size = samples.shape[0]
+    n_smpl = 1000
+    samples_to_traingle = samples[np.random.randint(samples_size, size=n_smpl), :] if samples_size > n_smpl else samples
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        _, _ = zeus.cornerplot(samples_to_traingle, labels=labels)  # , truth=truths)
     # # _ = corner(samples, labels=labels, truths=truths)
-    samples_mc = MCSamples(samples=samples, names=labels, labels=labels)
-    g = plots.get_subplot_plotter()
-    g.triangle_plot(samples_mc, filled=True)
+    # samples_mc = MCSamples(samples=samples, names=labels, labels=labels)
+    # g = plots.get_subplot_plotter()
+    # g.triangle_plot(samples_mc, filled=True)
     plt.show()
 
     # Tau statistics

@@ -68,11 +68,11 @@ LoTSS_DR2:
   # Inference
   mcmc_engine: emcee  # zeus, emcee
   continue_sampling: False
-  redshifts_to_fit: [deep_fields, tomographer]  # [deep_fields, tomographer]
+  redshifts_to_fit: [deep_fields]  # [deep_fields, tomographer]
   fit_bias_to_tomo: True
   correlations_to_use: [gg, gk]
-  to_infere: [sigma8, b_0, b_1, b_2, A_sn, z_sfg, a, r, n]  # sigma8, b_g_scaled, A_sn, z_sfg, a, r, n, A_z_tail
-  max_iterations: 100000
+  to_infere: [b_0, b_1, b_2, z_sfg, a, r]  # sigma8, b_g_scaled, A_sn, z_sfg, a, r, n, A_z_tail
+  max_iterations: 50000
   n_walkers: 32
 
 
