@@ -11,6 +11,7 @@ import pyccl as ccl
 import yaml
 from scipy.integrate import simps
 import pandas as pd
+import json
 
 from env_config import PROJECT_PATH
 
@@ -308,25 +309,35 @@ def read_fits_to_pandas(filepath, columns=None, n=None):
     return table
 
 
-def get_config(config_name):
-    configs_file = os.path.join(PROJECT_PATH, 'configs.yml')
-    with open(configs_file, 'r') as config_file:
-        config = yaml.full_load(config_file)
-    config = config[config_name]
+def get_config(data_name, experiment_name=None, as_struct=False):
+    if experiment_name:
+        mcmc_folder_path = os.path.join(PROJECT_PATH, 'outputs/MCMC/{}/{}'.format(data_name, experiment_name))
+        mcmc_filepath = os.path.join(mcmc_folder_path, '{}.config.json'.format(experiment_name))
+        with open(mcmc_filepath) as file:
+            config = json.load(file)
+        if as_struct:
+            config = struct(**config)
+        return config
 
-    # Dictionary fields, flatten to proper values
-    for key in ['z_tail', 'z_sfg', 'a', 'r', 'n', 'b_g', 'b_g_scaled', 'b_0', 'b_1', 'b_2', 'b_eff', 'A_sn',
-                'A_z_tail']:
-        if key in config:
-            config[key] = config[key][config['flux_min_cut']]
+    else:
+        configs_file = os.path.join(PROJECT_PATH, 'configs.yml')
+        with open(configs_file, 'r') as config_file:
+            config = yaml.full_load(config_file)
+        config = config[data_name]
 
-    return struct(**config)
+        # Dictionary fields, flatten to proper values
+        for key in ['z_tail', 'z_sfg', 'a', 'r', 'n', 'b_g', 'b_g_scaled', 'b_0', 'b_1', 'b_2', 'b_eff', 'A_sn',
+                    'A_z_tail']:
+            if key in config:
+                config[key] = config[key][config['flux_min_cut']]
+
+        return struct(**config)
 
 
 # TODO: Save covariance matrices
 # TODO: move to experiment as static function
 def save_correlations(experiment):
-    correlations_filename = get_correlations_filename(experiment)
+    correlations_filename = get_correlations_filename(experiment.config)
     file_path = os.path.join(
         PROJECT_PATH, 'outputs/correlations/{}/{}.csv'.format(experiment.config.lss_survey_name, correlations_filename))
     error_methods = experiment.covariance_matrices.keys()

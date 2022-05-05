@@ -16,13 +16,13 @@ from tqdm import tqdm
 from scipy.interpolate import interp1d
 
 from env_config import PROJECT_PATH, DATA_PATH
-from utils import logger, process_to_overdensity_map, get_pairs, get_correlation_matrix, get_redshift_distribution,\
-    get_chi_squared, decouple_correlation, read_correlations, get_corr_mean_diff, get_correlations,\
-    get_jackknife_masks, read_covariances, read_fits_to_pandas
+from utils import logger, process_to_overdensity_map, get_pairs, get_correlation_matrix, get_redshift_distribution, \
+    get_chi_squared, decouple_correlation, read_correlations, get_corr_mean_diff, get_correlations, \
+    get_jackknife_masks, read_covariances, read_fits_to_pandas, ISWTracer
 from data_lotss import get_lotss_data, get_lotss_map, get_lotss_redshift_distribution, LOTSS_JACKKNIFE_REGIONS
 from data_nvss import get_nvss_map, get_nvss_redshift_distribution
 from data_kids_qso import get_kids_qsos, get_kids_qso_map
-from data_cmb import get_cmb_lensing_map, get_cmb_lensing_noise, get_cmb_temperature_map,\
+from data_cmb import get_cmb_lensing_map, get_cmb_lensing_noise, get_cmb_temperature_map, \
     get_cmb_temperature_power_spectra
 
 
@@ -140,65 +140,6 @@ class Experiment:
         self.set_walkers_starting_params()
         self.mcmc_functions[self.config.mcmc_engine]()
 
-    def run_zeus_sampler(self):
-        n_walkers = self.p0_walkers.shape[0]
-        n_dim = self.p0_walkers.shape[1]
-
-        autocorr_cb = zeus.callbacks.AutocorrelationCallback(ncheck=10, dact=0.01, nact=50, discard=0.5)
-        split_r_cb = zeus.callbacks.SplitRCallback(ncheck=10, epsilon=0.01, nsplits=2, discard=0.5)
-        min_iter_cb = zeus.callbacks.MinIterCallback(nmin=500)
-        save_progress_cb = zeus.callbacks.SaveProgressCallback(self.backend_filename, ncheck=10)
-        save_stats_cb = SaveStatisticsCallback(autocorr_cb, split_r_cb, filename=self.tau_filename, ncheck=10)
-        callbacks = [autocorr_cb, split_r_cb, min_iter_cb, save_progress_cb, save_stats_cb]
-
-        sampler = zeus.EnsembleSampler(n_walkers, n_dim, self.get_log_prob)
-        sampler.run_mcmc(self.p0_walkers, self.config.max_iterations, callbacks=callbacks)
-        print(sampler.summary)
-
-    def run_emcee_sampler(self):
-        n_walkers = self.p0_walkers.shape[0]
-        n_dim = self.p0_walkers.shape[1]
-        backend = emcee.backends.HDFBackend(self.backend_filename)
-        if not self.config.continue_sampling:
-            backend.reset(n_walkers, n_dim)
-        emcee_sampler = emcee.EnsembleSampler(n_walkers, n_dim, self.get_log_prob, backend=backend)
-
-        tau_arr = np.load(self.tau_filename) if (
-                os.path.isfile(self.tau_filename) and self.config.continue_sampling) else np.array([])
-
-        if not self.config.continue_sampling:
-            emcee_sampler.reset()
-
-        for _ in emcee_sampler.sample(self.p0_walkers, iterations=self.config.max_iterations, progress=True):
-            tau = emcee_sampler.get_autocorr_time(tol=0)
-            tau_arr = np.append(tau_arr, [np.mean(tau)])
-            np.save(self.tau_filename, tau_arr)
-
-            if len(tau_arr) > 1:
-                tau_change = np.abs(tau_arr[-2] - tau) / tau
-                converged = np.all(tau * 50 < emcee_sampler.iteration)
-                converged &= np.all(tau_change < 0.1)
-                if converged:
-                    break
-
-    def set_walkers_starting_params(self):
-        p0 = []
-        for key in self.config.to_infere:
-            if key in self.config.__dict__:
-                p0.append(self.config.__dict__[key])
-            elif key in self.cosmology_params:
-                p0.append(self.cosmology_params[key])
-            elif key == 'Omega_m':
-                p0.append(self.cosmology_params['Omega_c'] + self.cosmology_params['Omega_b'])
-            else:
-                raise ValueError('No such parameter: {}'.format(key))
-
-        p0 = np.array(p0)
-        p0_scales = p0 * 0.1
-        n_dim = len(p0)
-        self.p0_walkers = np.array(
-            [p0 + p0_scales * np.random.uniform(low=-1, high=1, size=n_dim) for _ in range(self.config.n_walkers)])
-
     def get_log_prob(self, theta):
         # Check the priors
         log_prior = self.get_log_prior(theta)
@@ -212,7 +153,7 @@ class Experiment:
         cosmology_params = self.get_updated_cosmology_parameters(to_update)
 
         # Check the bias prior if present
-        if self.config.fit_bias_to_tomo:
+        if self.config.bias_model == 'quadratic':
             z_arr, n_arr = self.get_redshift_dist_function(config=config, normalize=False)
             bias_arr = self.get_bias(z_arr, self.cosmology, config)
             if (bias_arr <= 0).any():
@@ -276,6 +217,65 @@ class Experiment:
                     break
 
         return prior
+
+    def run_zeus_sampler(self):
+        n_walkers = self.p0_walkers.shape[0]
+        n_dim = self.p0_walkers.shape[1]
+
+        autocorr_cb = zeus.callbacks.AutocorrelationCallback(ncheck=10, dact=0.01, nact=50, discard=0.5)
+        split_r_cb = zeus.callbacks.SplitRCallback(ncheck=10, epsilon=0.01, nsplits=2, discard=0.5)
+        min_iter_cb = zeus.callbacks.MinIterCallback(nmin=500)
+        save_progress_cb = zeus.callbacks.SaveProgressCallback(self.backend_filename, ncheck=10)
+        save_stats_cb = SaveStatisticsCallback(autocorr_cb, split_r_cb, filename=self.tau_filename, ncheck=10)
+        callbacks = [autocorr_cb, split_r_cb, min_iter_cb, save_progress_cb, save_stats_cb]
+
+        sampler = zeus.EnsembleSampler(n_walkers, n_dim, self.get_log_prob)
+        sampler.run_mcmc(self.p0_walkers, self.config.max_iterations, callbacks=callbacks)
+        print(sampler.summary)
+
+    def run_emcee_sampler(self):
+        n_walkers = self.p0_walkers.shape[0]
+        n_dim = self.p0_walkers.shape[1]
+        backend = emcee.backends.HDFBackend(self.backend_filename)
+        if not self.config.continue_sampling:
+            backend.reset(n_walkers, n_dim)
+        emcee_sampler = emcee.EnsembleSampler(n_walkers, n_dim, self.get_log_prob, backend=backend)
+
+        tau_arr = np.load(self.tau_filename) if (
+                os.path.isfile(self.tau_filename) and self.config.continue_sampling) else np.array([])
+
+        if not self.config.continue_sampling:
+            emcee_sampler.reset()
+
+        for _ in emcee_sampler.sample(self.p0_walkers, iterations=self.config.max_iterations, progress=True):
+            tau = emcee_sampler.get_autocorr_time(tol=0)
+            tau_arr = np.append(tau_arr, [np.mean(tau)])
+            np.save(self.tau_filename, tau_arr)
+
+            if len(tau_arr) > 1:
+                tau_change = np.abs(tau_arr[-2] - tau) / tau
+                converged = np.all(tau * 50 < emcee_sampler.iteration)
+                converged &= np.all(tau_change < 0.1)
+                if converged:
+                    break
+
+    def set_walkers_starting_params(self):
+        p0 = []
+        for key in self.config.to_infere:
+            if key in self.config.__dict__:
+                p0.append(self.config.__dict__[key])
+            elif key in self.cosmology_params:
+                p0.append(self.cosmology_params[key])
+            elif key == 'Omega_m':
+                p0.append(self.cosmology_params['Omega_c'] + self.cosmology_params['Omega_b'])
+            else:
+                raise ValueError('No such parameter: {}'.format(key))
+
+        p0 = np.array(p0)
+        p0_scales = p0 * 0.1
+        n_dim = len(p0)
+        self.p0_walkers = np.array(
+            [p0 + p0_scales * np.random.uniform(low=-1, high=1, size=n_dim) for _ in range(self.config.n_walkers)])
 
     def get_updated_cosmology_parameters(self, to_update):
         cosmology_params = deepcopy(self.cosmology_params)
@@ -526,7 +526,7 @@ class Experiment:
             self.data_vector = np.append(self.data_vector, self.dn_dz_to_fit[i])
 
     def read_data_correlations(self):
-        correlations_df = read_correlations(experiment=self)
+        correlations_df = read_correlations(config=self.config)
         error_methods = ['gauss', 'jackknife'] if self.config.error_method == 'jackknife' else ['gauss']
         for correlation_symbol in self.correlation_symbols:
             self.data_correlations[correlation_symbol] = correlations_df['Cl_{}'.format(correlation_symbol)]
@@ -593,9 +593,11 @@ class Experiment:
         # Get tracers
         tracers_dict = {
             'g': ccl.NumberCountsTracer(cosmology, has_rsd=False, dndz=(z_arr, n_arr), bias=(z_arr, bias_arr)),
-            'k': ccl.CMBLensingTracer(cosmology, 1091),
-            # 't': ISWTracer(cosmology, z_max=6., n_chi=1024),
         }
+        if 'k' in self.map_symbols:
+            tracers_dict['k'] = ccl.CMBLensingTracer(cosmology, 1091)
+        if 't' in self.map_symbols:
+            tracers_dict['t'] = ISWTracer(cosmology, z_max=6., n_chi=1024)
 
         correlations_dict = {}
         for correlation_symbol in correlation_symbols:

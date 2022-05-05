@@ -18,7 +18,7 @@ import zeus
 from env_config import PROJECT_PATH
 from data_lotss import get_lotss_redshift_distribution
 from experiment import Experiment
-from utils import struct, decouple_correlation
+from utils import struct, get_config, decouple_correlation
 
 
 def compare_biases(experiments, data_name, x_scale='log', x_max=None, y_max=None):
@@ -94,6 +94,9 @@ def compare_redshifts(experiments, data_name):
     plt.show()
 
 
+# def get_best_fit_config(experiment_name, data_name):
+
+
 def show_mcmc_report(experiment_name, data_name, quick=False):
     logging.basicConfig(level=os.environ.get('LOGLEVEL', 'ERROR'))
 
@@ -106,7 +109,7 @@ def show_mcmc_report(experiment_name, data_name, quick=False):
         mcmc = np.percentile(samples[:, i], [16, 50, 84])
         best_fit_params[labels[i]] = mcmc[1]
         q = np.diff(mcmc)
-        print('{} = {:.3f} (+{:.3f}, -{:.3f})'.format(labels[i], mcmc[1], q[0], q[1]))
+        print('{} = {:.2f} (+{:.2f}, -{:.2f})'.format(labels[i], mcmc[1], q[0], q[1]))
     print('------------------------------')
 
     # Sigmas and chi-squared
@@ -143,10 +146,8 @@ def show_mcmc_report(experiment_name, data_name, quick=False):
 
 
 def get_samples(experiment_name, data_name, print_stats=False):
+    config = get_config(data_name, experiment_name)
     mcmc_folder_path = os.path.join(PROJECT_PATH, 'outputs/MCMC/{}/{}'.format(data_name, experiment_name))
-    mcmc_filepath = os.path.join(mcmc_folder_path, '{}.config.json'.format(experiment_name))
-    with open(mcmc_filepath) as file:
-        config = json.load(file)
 
     if 'mcmc_engine' in config and config['mcmc_engine'] == 'zeus':
         samples, log_prob_samples, tau_arr, burnin, thin = get_zeus_samples(experiment_name, mcmc_folder_path)

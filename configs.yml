@@ -14,16 +14,16 @@ LoTSS_DR2:
   read_covariance_flag: True
   error_method: jackknife  # jackknife, gauss
   l_range: {
-    gg: [52, 502],  # 252, 502
-    gk: [52, 502],  # 252, 502
-#    gg: [2, 120],
-#    gt: [2, 120],
+#    gg: [52, 502],  # 252, 502
+#    gk: [52, 502],  # 252, 502
+    gg: [2, 34],
+    gt: [2, 34],
   }
   ells_per_bin: {
-    gg: 50,
-    gk: 50,
-#    gg: 16,
-#    gt: 16,
+#    gg: 50,
+#    gk: 50,
+    gg: 16,
+    gt: 16,
   }
 
   dn_dz_model: 'power_law'  # 'deep_fields', 'z_tail', 'power_law', 'tomographer'
@@ -46,7 +46,7 @@ LoTSS_DR2:
   A_z_tail: {1.5: 1}
 
   # Bias
-  bias_model: 'quadratic'
+  bias_model: 'scaled'
   # constant
   b_g: {2: 3.0, 1.5: 3.0}
   # scaled
@@ -69,9 +69,9 @@ LoTSS_DR2:
   mcmc_engine: emcee  # zeus, emcee
   continue_sampling: False
   redshifts_to_fit: [deep_fields]  # [deep_fields, tomographer]
-  fit_bias_to_tomo: True
-  correlations_to_use: [gg, gk]
-  to_infere: [b_0, b_1, b_2, z_sfg, a, r]  # sigma8, b_g_scaled, A_sn, z_sfg, a, r, n, A_z_tail
+  fit_bias_to_tomo: False
+  correlations_to_use: [gg, gt]
+  to_infere: [sigma8, b_0, b_1, b_2, z_sfg, a, r, n]  # sigma8, b_g, b_g_scaled, b_0, b_1, b_2, A_sn, z_sfg, a, r, n, A_z_tail
   max_iterations: 50000
   n_walkers: 32
 
