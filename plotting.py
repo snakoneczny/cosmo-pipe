@@ -11,6 +11,35 @@ HETDEX_LON_RANGE = [158, 234]
 HETDEX_LAT_RANGE = [43, 60]
 
 
+def plot_many_correlations_comparison(correlations_dict, correlation_symbol, is_raw=False, error_method='gauss',
+                                      x_min=0, x_max=None, y_min=None, y_max=None, x_scale='linear', y_scale='log',
+                                      title=None):
+    marker = itertools.cycle(('o', 'v', 's', 'p', '*'))
+    for corr_name, corr_df in correlations_dict.items():
+        # Data
+        ell_arr = corr_df['l']
+        corr = corr_df['Cl_{}'.format(correlation_symbol)]
+        noise = corr_df['nl_{}'.format(correlation_symbol)]
+        error = corr_df['error_{}_{}'.format(correlation_symbol, error_method)]
+        corr = corr - noise
+        if is_raw:
+            corr += corr_df['nl_{}_multicomp'.format(correlation_symbol)]
+
+        # Upper plot, two correlation functions
+        plt.errorbar(ell_arr, corr, yerr=error, label=corr_name, marker=next(marker), linestyle='', markersize=2)
+
+    plt.xlim(xmin=x_min, xmax=x_max)
+    plt.ylim(ymin=y_min, ymax=y_max)
+    plt.xscale(x_scale)
+    plt.yscale(y_scale)
+    plt.xlabel('$\\ell$', fontsize=16)
+    plt.ylabel('$C_\\ell^{{{}}}$'.format(correlation_symbol), fontsize=16)
+    plt.legend(loc='upper right', ncol=2, labelspacing=0.1)
+    plt.grid()
+    plt.title(title)
+    plt.show()
+
+
 def plot_correlation_comparison(correlations_a, correlations_b, correlation_symbols, correlation_names,
                                 is_raw=[False, False], error_method='gauss', x_min=0, x_max=None, y_min=None,
                                 y_max=None, x_scale='linear',
@@ -70,33 +99,10 @@ def plot_correlation_comparison(correlations_a, correlations_b, correlation_symb
     plt.show()
 
 
-def plot_many_data_correlations(experiment_dict, correlation_symbol, x_min=0, x_max=None, y_min=None, y_max=None,
-                                x_scale='linear', y_scale='linear', legend_loc='upper right'):
-    # Assuming the same theory across experiments
-    experiment = list(experiment_dict.values())[0]
-    data_to_plot = experiment.theory_correlations[correlation_symbol] - experiment.noise_curves[correlation_symbol]
-    plt.plot(experiment.l_arr, data_to_plot, 'r', label='theory', markersize=2)
-
-    # Iterate experiments on data
-    marker = itertools.cycle(('o', 'v', 's', 'p', '*'))
-    for experiment_name, experiment in experiment_dict.items():
-        ell_arr = experiment.binnings[correlation_symbol].get_effective_ells()
-        data_to_plot = experiment.data_correlations[correlation_symbol] - experiment.noise_curves[correlation_symbol]
-        plt.errorbar(ell_arr, data_to_plot, marker=next(marker), linestyle='', label=experiment_name)
-
-    plt.xlim(xmin=x_min, xmax=x_max)
-    plt.ylim(ymin=y_min, ymax=y_max)
-    plt.xscale(x_scale)
-    plt.yscale(y_scale)
-    plt.xlabel('$\\ell$', fontsize=16)
-    plt.ylabel('$C_\\ell^{{{}}}$'.format(correlation_symbol), fontsize=16)
-    plt.legend(loc=legend_loc, ncol=2, labelspacing=0.1)
-    plt.grid()
-    plt.show()
-
-
 def plot_correlation(experiment, correlation_symbol, x_min=0, x_max=None, y_min=None, y_max=None, x_scale='linear',
-                     y_scale='linear', title=None, with_error=True, is_raw=False, error_method='jackknife'):
+                     y_scale='linear', title=None, with_error=True, is_raw=False):
+    error_method = 'jackknife' if 'jackknife' in experiment.errors else 'gauss'
+
     # Data error bars
     y_err = None
     if with_error and correlation_symbol in experiment.errors[error_method]:

@@ -63,6 +63,7 @@ class ISWTracer(ccl.Tracer):
         self.add_tracer(cosmo, kernel=(chi, w_arr), der_bessel=-1)
 
 
+# TODO: pass inverted covariance
 def get_chi_squared(data_vector, model_vector, covariance_matrix):
     inverted_covariance = np.linalg.inv(covariance_matrix)
     diff = data_vector - model_vector
@@ -148,9 +149,17 @@ def get_correlation_matrix(covariance_matrix):
     return correlation_matrix
 
 
-def get_redshift_distribution(data, n_bins=50, z_col='Z_PHOTO_QSO'):
+def get_redshift_distribution(data=None, experiment=None, n_bins=50, z_col='Z_PHOTO_QSO', config=None, normalize=False):
+    if data is None:
+        data = experiment.data.get('g')
+
     n_arr, z_arr = np.histogram(data[z_col], bins=n_bins)
     z_arr = np.array([(z_arr[i + 1] + z_arr[i]) / 2 for i in range(len(z_arr) - 1)])
+
+    if normalize:
+        area = simps(n_arr, z_arr)
+        n_arr /= area
+
     return z_arr, n_arr
 
 
@@ -326,10 +335,11 @@ def get_config(data_name, experiment_name=None, as_struct=False):
         config = config[data_name]
 
         # Dictionary fields, flatten to proper values
-        for key in ['z_tail', 'z_sfg', 'a', 'r', 'n', 'b_g', 'b_g_scaled', 'b_0', 'b_1', 'b_2', 'b_eff', 'A_sn',
-                    'A_z_tail']:
-            if key in config:
-                config[key] = config[key][config['flux_min_cut']]
+        if config['lss_survey_name'] == 'LoTSS_DR2':
+            for key in ['z_tail', 'z_sfg', 'a', 'r', 'n', 'b_g', 'b_g_scaled', 'b_0', 'b_1', 'b_2', 'b_eff', 'A_sn',
+                        'A_z_tail']:
+                if key in config:
+                    config[key] = config[key][config['flux_min_cut']]
 
         return struct(**config)
 
@@ -401,10 +411,18 @@ def read_covariances(experiment):
 
 
 def get_correlations_filename(config):
-    optical_name = 'opt' if config.is_optical else 'srl'
     correlation_symbols = list(config.l_range.keys())
-    experiment_name = '{}_{}__{}__{}mJy_snr={}_nside={}_{}_bin={}'.format(
-        config.lss_survey_name, optical_name, config.lss_mask_name, config.flux_min_cut, config.signal_to_noise,
-        config.nside, '-'.join(correlation_symbols), config.ells_per_bin['gg']
-    )
+    if config.lss_survey_name == 'LoTSS_DR2':
+        optical_name = 'opt' if config.is_optical else 'srl'
+        experiment_name = '{}_{}__{}__{}mJy_snr={}_nside={}_{}_bin={}'.format(
+            config.lss_survey_name, optical_name, config.lss_mask_name, config.flux_min_cut, config.signal_to_noise,
+            config.nside, '-'.join(correlation_symbols), config.ells_per_bin['gg']
+        )
+    elif config.lss_survey_name == 'KiDS_QSO':
+        experiment_name = '{}__{}__r-max={}_qso-min-proba={}_nside={}_{}_bin={}'.format(
+            config.lss_survey_name, config.lss_mask_name, config.r_max, config.qso_min_proba,
+            config.nside, '-'.join(correlation_symbols), config.ells_per_bin['gg']
+        )
+    else:
+        raise ValueError('{} not implemented'.format(config.lss_survey_name))
     return experiment_name

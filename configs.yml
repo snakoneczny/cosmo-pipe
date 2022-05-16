@@ -1,15 +1,17 @@
-# Configurations given in order of: data, correlations, MCMC
-# Dictionaries are functions of flux cut
-
+# Parameters are given as a function of flux cut
 LoTSS_DR2:
+  # Data
   lss_survey_name: LoTSS_DR2
   is_optical: False
+
+  # Maps
   lss_mask_name: mask_inner  # mask_inner, mask_optical
   # mask_coverage, mask_default, mask_noise_75percent, mask_noise_99_percent, mask_noise_median
   nside: 512
   flux_min_cut: 1.5
   signal_to_noise: 7.5
 
+  # Correlations
   read_correlations_flag: False
   read_covariance_flag: True
   error_method: jackknife  # jackknife, gauss
@@ -26,6 +28,7 @@ LoTSS_DR2:
     gt: 16,
   }
 
+  # Redshift
   dn_dz_model: 'power_law'  # 'deep_fields', 'z_tail', 'power_law', 'tomographer'
   z_tail: {2: 1.3, 1.5: 0, 1: 1.0, 0.5: 1.0}
   # 1: Dominik's fit to deep fields
@@ -77,18 +80,25 @@ LoTSS_DR2:
 
 
 LoTSS_DR1:
+  # Data
   lss_survey_name: LoTSS_DR1
   is_optical: True
+
+  # Maps
   nside: 512
   flux_min_cut: 2
   signal_to_noise: 5
 
+  # Redshift
   dn_dz_model: 'z_tail'  # 'deep_fields', 'z_tail', 'power_law'
   # Old redshift distribution
   z_tail: {2: 0.9}
+
+  # Bias
   bias_model: 'scaled'  # 'linear', 'scaled', 'polynomial'
   b_0_scaled: {2: 1.4}  # 2.1 from DR1, 1.4 for deep fields
 
+  # Correlations
   read_data_correlations_flag: False
   cosmology_name: planck
   cosmology_matter_power_spectrum: halofit
@@ -101,6 +111,7 @@ LoTSS_DR1:
     gk: 50,
   }
 
+  # Inference
   continue_sampling: True
   starting_params: {b_0_scaled: [1.5, 1.0], z_tail: [1.5, 1.0]}  # , sigma8: [0.83, 0.1]}
   max_iterations: 5000
@@ -108,32 +119,65 @@ LoTSS_DR1:
 
 
 KiDS_QSO:
+  # Data
   lss_survey_name: KiDS_QSO
-  nside: 512
-  bias: 1.6
-  scale_bias: True
+  r_max: 22
+  qso_min_proba: 0.98
 
-  cosmology_name: planck
-  cosmology_matter_power_spectrum: halofit
-  correlation_symbols: [gg, gk]
-  l_max: {
-    gg: 510,
-    gk: 510,
+  # Maps
+  lss_mask_name: mask_coverage
+  nside: 512
+
+  # Correlations
+  read_correlations_flag: False
+  read_covariance_flag: False
+  error_method: gauss  # jackknife, gauss
+  l_range: {
+    gg: [52, 502],  # 252, 502
+    gk: [2, 502],  # 252, 502
   }
   ells_per_bin: {
     gg: 50,
-    gk: 50
+    gk: 50,
   }
 
+  # Redshift
+  dn_dz_model: 'photo-z'  # 'photo-z', 'tomographer'
+
+  # Bias
+  bias_model: 'scaled'  # constant, scaled, quadratic, tomographer
+  b_g: 1.2
+  b_g_scaled: 1.2
+  b_0: 1.5
+  b_1: 1.2
+  b_2: 1.1
+  b_eff: 2.0
+
+  # Shot noise
+  A_sn: 1
+
+  # Cosmology
+  cosmology_name: planck
+  cosmology_matter_power_spectrum: halofit
+
+  # Inference
+  mcmc_engine: emcee  # zeus, emcee
   continue_sampling: False
-  max_iterations: 5000
-  starting_params: {bias: [2.1, 0.5], sigma8: [0.83, 0.1]}
+  redshifts_to_fit: []  # [tomographer]
+  fit_bias_to_tomo: False
+  correlations_to_use: [gg, gk]
+  to_infere: [b_g_scaled]  # b_g, b_g_scaled, b_0, b_1, b_2, A_sn
+  max_iterations: 50000
   n_walkers: 32
 
 
 NVSS:
   lss_survey_name: NVSS
+
+  # Maps
   nside: 512
+
+  # Bias
   bias: 2.18
   scale_bias: False
 

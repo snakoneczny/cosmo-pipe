@@ -335,7 +335,7 @@ class Experiment:
 
             zero_chi_squared = get_chi_squared(data, 0, cov_matrix)
             diff = zero_chi_squared - self.chi_squared[corr_symbol]
-            self.sigmas[corr_symbol] = math.sqrt(diff) if diff > 0 else None
+            self.sigmas[corr_symbol] = math.sqrt(diff) if diff > 0 else 0
 
     def set_errors(self):
         for error_method in self.covariance_matrices.keys():
@@ -480,6 +480,15 @@ class Experiment:
                 self.correlation_matrices['jackknife'][correlation_pair] = get_correlation_matrix(covariance)
 
     def set_gauss_covariance(self):
+        # Make theory correlation fit the observable ones
+        fixed_theory_correlations = deepcopy(self.theory_correlations)
+        for corr_smbl in self.correlation_symbols:
+            bin_range = self.bin_range[corr_smbl]
+            thr_corr = self.theory_correlations[corr_smbl][bin_range[0]:bin_range[1]]
+            data_corr = self.data_correlations[corr_smbl][bin_range[0]:bin_range[1]]
+            ratio = np.mean(data_corr) / np.mean(thr_corr)
+            fixed_theory_correlations[corr_smbl] *= ratio
+
         correlation_pairs = get_pairs(self.correlation_symbols, join_with='-')
         for correlation_pair in correlation_pairs:
             a1 = correlation_pair[0]
@@ -495,10 +504,10 @@ class Experiment:
             self.covariance_matrices['gauss'][correlation_pair] = nmt.gaussian_covariance(
                 covariance_workspace,
                 0, 0, 0, 0,
-                [self.theory_correlations[''.join(sorted([a1, b1]))]],
-                [self.theory_correlations[''.join(sorted([a1, b2]))]],
-                [self.theory_correlations[''.join(sorted([a2, b1]))]],
-                [self.theory_correlations[''.join(sorted([a2, b2]))]],
+                [fixed_theory_correlations[''.join(sorted([a1, b1]))]],
+                [fixed_theory_correlations[''.join(sorted([a1, b2]))]],
+                [fixed_theory_correlations[''.join(sorted([a2, b1]))]],
+                [fixed_theory_correlations[''.join(sorted([a2, b2]))]],
                 wa=self.workspaces[a1 + a2],
                 wb=self.workspaces[b1 + b2],
             )
@@ -736,7 +745,7 @@ class Experiment:
                                             signal_to_noise=self.config.signal_to_noise,
                                             optical=self.config.is_optical)
         elif self.config.lss_survey_name == 'KiDS_QSO':
-            self.data['g'] = get_kids_qsos()
+            self.data['g'] = get_kids_qsos(r_max=self.config.r_max, qso_min_proba=self.config.qso_min_proba)
 
         self.are_data_ready = True
 
@@ -764,7 +773,8 @@ class Experiment:
             'LoTSS_DR2': lotss_partial,
             'LoTSS_DR1': lotss_partial,
             'NVSS': get_nvss_redshift_distribution,
-            'KiDS_QSO': partial(get_redshift_distribution, self.data.get('g'), n_bins=50, z_col='Z_PHOTO_QSO'),
+            'KiDS_QSO': partial(get_redshift_distribution, experiment=self, n_bins=50, z_col='Z_PHOTO_QSO',
+                                config=self.config),
         }
         self.get_redshift_dist_function = get_redshift_distribution_functions[self.config.lss_survey_name]
 
