@@ -18,7 +18,6 @@ LOTSS_JACKKNIFE_REGIONS = [
     {'lon': (37, -25, 5), 'lat': (19, 40, 2)},
 ]
 
-
 # TODO: refactor, shorten, split into more functions (?)
 def get_redshift_distributions(data_optical, data_skads):
     # Tomographer

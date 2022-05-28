@@ -41,9 +41,8 @@ def plot_many_correlations_comparison(correlations_dict, correlation_symbol, is_
 
 
 def plot_correlation_comparison(correlations_a, correlations_b, correlation_symbols, correlation_names,
-                                is_raw=[False, False], error_method='gauss', x_min=0, x_max=None, y_min=None,
-                                y_max=None, x_scale='linear',
-                                y_scale='linear', title=None, with_error=True):
+                                is_raw=[False, False], error_method='jackknife', x_min=0, x_max=None, y_min=None,
+                                y_max=None, x_scale='linear', y_scale='linear', title=None, with_error=True):
     # Data
     ell_arr = correlations_a['l']
     corr_a = correlations_a['Cl_{}'.format(correlation_symbols[0])]

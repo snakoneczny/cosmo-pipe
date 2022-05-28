@@ -14,8 +14,9 @@ config = get_config(args.config_name)
 config.experiment_tag = args.tag
 config.read_data_correlations_flag = False
 config.read_covariance_flag = False
-config.redshifts_to_fit = None
-print(config)
+config.redshifts_to_fit = []
+config.fit_bias_to_tomo = False
+print(config.__dict__)
 
 # Iterate thorugh parameters
 for flux_min_cut in [1.5]:

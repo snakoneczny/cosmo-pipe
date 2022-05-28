@@ -18,8 +18,8 @@ config.redshifts_to_fit = []
 print(config)
 
 # Iterate thorugh parameters
-for r_max in [21, 22, 23]:
-    for qso_min_proba in [0.9, 0.96, 0.98, 0.99, 0.999]:
+for r_max in [21, 22, 23, 23.5]:
+    for qso_min_proba in [0.9985]:
         print('Processing: r_max={}, qso_min_proba={}'.format(r_max, qso_min_proba))
         config.r_max = r_max
         config.qso_min_proba = qso_min_proba

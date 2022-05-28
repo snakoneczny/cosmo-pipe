@@ -252,6 +252,7 @@ class Experiment:
             tau_arr = np.append(tau_arr, [np.mean(tau)])
             np.save(self.tau_filename, tau_arr)
 
+            # TODO: not working properly
             if len(tau_arr) > 1:
                 tau_change = np.abs(tau_arr[-2] - tau) / tau
                 converged = np.all(tau * 50 < emcee_sampler.iteration)

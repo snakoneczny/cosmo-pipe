@@ -94,9 +94,6 @@ def compare_redshifts(experiments, data_name):
     plt.show()
 
 
-# def get_best_fit_config(experiment_name, data_name):
-
-
 def show_mcmc_report(experiment_name, data_name, quick=False):
     logging.basicConfig(level=os.environ.get('LOGLEVEL', 'ERROR'))
 
