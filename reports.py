@@ -12,11 +12,9 @@ from tqdm import tqdm_notebook
 from copy import deepcopy
 import h5py
 from scipy.interpolate import interp1d
-# from getdist import MCSamples, plots
 import zeus
 
 from env_config import PROJECT_PATH
-from data_lotss import get_lotss_redshift_distribution
 from experiment import Experiment
 from utils import struct, get_config, decouple_correlation
 
@@ -119,17 +117,18 @@ def show_mcmc_report(experiment_name, data_name, quick=False):
     # if 'Omega_m' in labels:
     #     truths[labels.index('Omega_m')] = 0.31
 
-    samples_size = samples.shape[0]
-    n_smpl = 1000
-    samples_to_traingle = samples[np.random.randint(samples_size, size=n_smpl), :] if samples_size > n_smpl else samples
-    with warnings.catch_warnings():
-        warnings.simplefilter('ignore')
-        _, _ = zeus.cornerplot(samples_to_traingle, labels=labels)  # , truth=truths)
-    # # _ = corner(samples, labels=labels, truths=truths)
-    # samples_mc = MCSamples(samples=samples, names=labels, labels=labels)
-    # g = plots.get_subplot_plotter()
-    # g.triangle_plot(samples_mc, filled=True)
-    plt.show()
+    if len(labels) > 1:
+        samples_size = samples.shape[0]
+        n_smpl = 1000
+        samples_to_traingle = samples[np.random.randint(samples_size, size=n_smpl), :] if samples_size > n_smpl else samples
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            _, _ = zeus.cornerplot(samples_to_traingle, labels=labels)  # , truth=truths)
+        # # _ = corner(samples, labels=labels, truths=truths)
+        # samples_mc = MCSamples(samples=samples, names=labels, labels=labels)
+        # g = plots.get_subplot_plotter()
+        # g.triangle_plot(samples_mc, filled=True)
+        plt.show()
 
     # Tau statistics
     plot_mean_tau(tau_arr)
@@ -253,14 +252,14 @@ def make_param_plots(config, arg_names, samples):
         # Store redshift distribution
         for redshift_to_fit in experiment.config.redshifts_to_fit:
             normalize = False if redshift_to_fit == 'tomographer' else True
-            z_arr, n_arr = get_lotss_redshift_distribution(config=config, normalize=normalize)
+            z_arr, n_arr = experiment.get_redshift_dist_function(config=config, normalize=normalize)
             if redshift_to_fit == 'tomographer' and config.fit_bias_to_tomo:
                 bias_arr = experiment.get_bias(z_arr, experiment.cosmology, config)
                 n_arr *= bias_arr
             redshift_functions_store[redshift_to_fit].append(n_arr)
 
         # Store bias function
-        z_arr, _ = get_lotss_redshift_distribution(config=config, normalize=False)
+        z_arr, _ = experiment.get_redshift_dist_function(config=config, normalize=False)
         bias_arr_store.append(experiment.get_bias(z_arr, experiment.cosmology, config))
 
     # Plot correlations
@@ -269,8 +268,11 @@ def make_param_plots(config, arg_names, samples):
 
         # Theory
         ell_arr = experiment.binnings[correlation_symbol].get_effective_ells()
+        ell_dense = np.arange(ell_arr[0], ell_arr[-1], 1)
         for correlation in correlations_store[correlation_symbol]:
-            plt.plot(ell_arr, correlation, 'C1', alpha=0.02)
+            f = interp1d(ell_arr, correlation, kind='cubic')
+            correlation_interpolated = f(ell_dense)
+            plt.plot(ell_dense, correlation_interpolated, 'C1', alpha=0.02)
 
         # Data
         noise = experiment.noise_decoupled[correlation_symbol]

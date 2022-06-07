@@ -425,4 +425,9 @@ def get_correlations_filename(config):
         )
     else:
         raise ValueError('{} not implemented'.format(config.lss_survey_name))
+
+    # This would have to be a different tag than the experiment tag
+    # if config.experiment_tag:
+    #     experiment_name += '__' + config.experiment_tag
+
     return experiment_name

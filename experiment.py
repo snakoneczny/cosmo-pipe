@@ -371,7 +371,7 @@ class Experiment:
                     self.config.flux_min_cut)
                 pz_deepfields = read_fits_to_pandas(os.path.join(DATA_PATH, deepfields_file))
                 self.dz_to_fit.append(pz_deepfields['zbins'])
-                self.dn_dz_to_fit.append(pz_deepfields['pz_boot_mean'])
+                self.dn_dz_to_fit.append(pz_deepfields['pz'])
                 self.dn_dz_err_to_fit.append(pz_deepfields['error_boot'])
 
             total_length += len(self.dz_to_fit[-1])

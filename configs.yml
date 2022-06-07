@@ -49,7 +49,7 @@ LoTSS_DR2:
   A_z_tail: {1.5: 1}
 
   # Bias
-  bias_model: 'constant'
+  bias_model: 'scaled'
   # constant
   b_g: {2: 3.0, 1.5: 3.0}
   # scaled
@@ -71,10 +71,10 @@ LoTSS_DR2:
   # Inference
   mcmc_engine: emcee  # zeus, emcee
   continue_sampling: False
-  redshifts_to_fit: [deep_fields]  # [deep_fields, tomographer]
-  fit_bias_to_tomo: False
-  correlations_to_use: [gg]  # gg, gk, gt
-  to_infere: [b_g, z_sfg, a, r]  # sigma8, b_g, b_g_scaled, b_0, b_1, b_2, A_sn, z_sfg, a, r, n, A_z_tail
+  redshifts_to_fit: [deep_fields, tomographer]  # [deep_fields, tomographer]
+  fit_bias_to_tomo: True
+  correlations_to_use: [gg, gk]  # gg, gk, gt
+  to_infere: [b_g_scaled, A_sn, z_sfg, a, r, n]  # sigma8, b_g, b_g_scaled, b_0, b_1, b_2, A_sn, z_sfg, a, r, n, A_z_tail
   max_iterations: 50000
   n_walkers: 32
 
@@ -121,8 +121,8 @@ LoTSS_DR1:
 KiDS_QSO:
   # Data
   lss_survey_name: KiDS_QSO
-  r_max: 22
-  qso_min_proba: 0.98
+  r_max: 21
+  qso_min_proba: 0.9
 
   # Maps
   lss_mask_name: mask_coverage
@@ -130,7 +130,7 @@ KiDS_QSO:
 
   # Correlations
   read_correlations_flag: False
-  read_covariance_flag: False
+  read_covariance_flag: True
   error_method: gauss  # jackknife, gauss
   l_range: {
     gg: [52, 502],  # 252, 502
@@ -147,7 +147,7 @@ KiDS_QSO:
   # Bias
   bias_model: 'scaled'  # constant, scaled, quadratic, tomographer
   b_g: 1.2
-  b_g_scaled: 1.2
+  b_g_scaled: 1.1
   b_0: 1.5
   b_1: 1.2
   b_2: 1.1

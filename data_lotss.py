@@ -151,7 +151,7 @@ def get_lotss_redshift_distribution(config=None, model='power_law', z_sfg=None, 
         deepfields_file = 'LoTSS/DR2/pz_deepfields/Pz_booterrors_wsum_deepfields_{:.1f}mJy.fits'.format(flux_cut)
         pz_deepfields = read_fits_to_pandas(os.path.join(DATA_PATH, deepfields_file))
         z_arr = pz_deepfields['zbins']
-        n_arr = pz_deepfields['pz_boot_mean']
+        n_arr = pz_deepfields['pz']  # pz_boot_mean
 
     elif model == 'tomographer':
         filename = 'LoTSS/DR2/tomographer/{}mJy_{}SNR_srl_catalog_inner.csv'.format(
