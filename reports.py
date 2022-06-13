@@ -1,18 +1,18 @@
-import json
 import os
 from collections import defaultdict
 from random import random, sample
-import warnings
 import logging
+import warnings
 
-import emcee
 import numpy as np
 from matplotlib import pyplot as plt
 from tqdm import tqdm_notebook
 from copy import deepcopy
 import h5py
 from scipy.interpolate import interp1d
+import emcee
 import zeus
+# from getdist import MCSamples, plots
 
 from env_config import PROJECT_PATH
 from experiment import Experiment
@@ -22,7 +22,7 @@ from utils import struct, get_config, decouple_correlation
 def compare_biases(experiments, data_name, x_scale='log', x_max=None, y_max=None):
     plt.figure()
 
-    for experiment_name, experiment_label in experiments:
+    for experiment_label, experiment_name in experiments:
         config, samples, _, _ = get_samples(experiment_name, data_name, print_stats=False)
 
         # Final estimate
@@ -64,7 +64,7 @@ def compare_biases(experiments, data_name, x_scale='log', x_max=None, y_max=None
 
 
 def compare_redshifts(experiments, data_name):
-    for experiment_name, experiment_label in experiments:
+    for experiment_label, experiment_name in experiments:
         config, samples, _, _ = get_samples(experiment_name, data_name, print_stats=False)
         labels = config['to_infere']
 
@@ -110,25 +110,43 @@ def show_mcmc_report(experiment_name, data_name, quick=False):
     # Sigmas and chi-squared
     make_sigmas_report(config, best_fit_params)
 
-    # Triangle plot
-    # truths = [None] * len(labels)
-    # if 'sigma8' in labels:
-    #     truths[labels.index('sigma8')] = 0.81
-    # if 'Omega_m' in labels:
-    #     truths[labels.index('Omega_m')] = 0.31
-
+    # Zeus traingle plot
     if len(labels) > 1:
+        # truths = [None] * len(labels)
+        # if 'sigma8' in labels:
+        #     truths[labels.index('sigma8')] = 0.811
+        # if 'Omega_m' in labels:
+        #     truths[labels.index('Omega_m')] = 0.315
+
         samples_size = samples.shape[0]
         n_smpl = 1000
         samples_to_traingle = samples[np.random.randint(samples_size, size=n_smpl), :] if samples_size > n_smpl else samples
+
         with warnings.catch_warnings():
             warnings.simplefilter('ignore')
             _, _ = zeus.cornerplot(samples_to_traingle, labels=labels)  # , truth=truths)
-        # # _ = corner(samples, labels=labels, truths=truths)
-        # samples_mc = MCSamples(samples=samples, names=labels, labels=labels)
-        # g = plots.get_subplot_plotter()
-        # g.triangle_plot(samples_mc, filled=True)
-        plt.show()
+            plt.show()
+
+    # getdist triangle plot
+    # pp_dict = {
+    #     'Omega_m': '\Omega_m',
+    #     'sigma8': '\sigma_8',
+    #     'b_g_scaled': 'b_g',
+    # }
+    # pp_labels = [lbl if lbl not in pp_dict else pp_dict[lbl] for lbl in labels]
+    # samples_mc = MCSamples(samples=samples, names=labels, labels=pp_labels,
+    #                        settings={'smooth_scale_2D': 0.3, 'smooth_scale_1D': 0.3})
+    #
+    # g = plots.get_single_plotter()
+    # g.plot_1d(samples_mc, 'sigma8', normalized=True, lims=[0.5, 1.1])
+    # g.add_x_marker(0.811)
+    # plt.show()
+    #
+    # g = plots.get_subplot_plotter()
+    # # g.triangle_plot(samples_mc, ['b_g_scaled', 'sigma8'], filled=True, markers={'sigma8': 0.811})
+    # # lims={'b_g_scaled': (0.5, 2.5, 1), 'sigma8': (0.5, 1.2, 1)})
+    # g.triangle_plot(samples_mc, filled=True, markers={'sigma8': 0.811})
+    # plt.show()
 
     # Tau statistics
     plot_mean_tau(tau_arr)

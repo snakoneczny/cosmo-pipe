@@ -8,61 +8,61 @@ LoTSS_DR2:
   lss_mask_name: mask_inner  # mask_inner, mask_optical
   # mask_coverage, mask_default, mask_noise_75percent, mask_noise_99_percent, mask_noise_median
   nside: 512
-  flux_min_cut: 1.5
-  signal_to_noise: 7.5
+  flux_min_cut: 1.5  # 1.0, 1.5, 2.0
+  signal_to_noise: 7.5  # 5.0, 7.5
 
   # Correlations
   read_correlations_flag: False
   read_covariance_flag: True
   error_method: jackknife  # jackknife, gauss
   l_range: {
-    gg: [52, 502],  # 252, 502
-    gk: [52, 502],  # 252, 502
-#    gg: [2, 34],
-#    gt: [2, 34],
+#    gg: [52, 802],  # 252, 502, 802
+#    gk: [52, 802],  # 252, 502, 802
+    gg: [2, 80],  # 34
+    gt: [2, 80],  # 34
   }
   ells_per_bin: {
-    gg: 50,
-    gk: 50,
-#    gg: 16,
-#    gt: 16,
+#    gg: 50,
+#    gk: 50,
+    gg: 16,
+    gt: 16,
   }
 
   # Redshift
   dn_dz_model: 'power_law'  # 'deep_fields', 'z_tail', 'power_law', 'tomographer'
-  z_tail: {2: 1.3, 1.5: 0, 1: 1.0, 0.5: 1.0}
+  z_tail: {2: 1.3, 1.5: 0, 1.0: 1.0, 0.5: 1.0}
   # 1: Dominik's fit to deep fields
   # 2: My fit to tomographer
   # 3: My fit to tomographer * D(z)
-  z_sfg: {2: 0.13, 1.5: 0.13, 1: 0.14, 0.5: 0.15}
+  z_sfg: {2: 0.13, 1.5: 0.13, 1.0: 0.14, 0.5: 0.15}
 #  z_sfg: {2: 0.039, 1.5: 0.039}
 #  z_sfg: {2: 0.038, 1.5: 0.037}
-  a: {2: 4.66, 1.5: 6.64, 1: 4.60, 0.5: 4.56}
+  a: {2: 4.66, 1.5: 6.64, 1.0: 4.60, 0.5: 4.56}
 #  a: {2: 3.59, 1.5: 3.33}
 #  a: {2: 4.45, 1.5: 4.20}
-  r: {2: 0.94, 1.5: 0.92, 1: 0.90, 0.5: 0.93}
+  r: {2: 0.94, 1.5: 0.92, 1.0: 0.90, 0.5: 0.93}
 #  r: {2: 0.18, 1.5: 0.18}
 #  r: {2: 0.18, 1.5: 0.19}
-  n: {2: 1, 1.5: 110000}
+  n: {2.0: 1, 1.5: 110000, 1.0: 1}
 #  n: {2: 1, 1.5: 109298}
 #  n: {2: 1, 1.5: 111252}
-  A_z_tail: {1.5: 1}
+  A_z_tail: {2.0: 1, 1.5: 1, 1.0: 1}
 
   # Bias
   bias_model: 'scaled'
   # constant
-  b_g: {2: 3.0, 1.5: 3.0}
+  b_g: {2: 3.0, 1.5: 3.0, 1.0: 3.0}
   # scaled
-  b_g_scaled: {2: 1.4, 1.5: 1.3, 1: 1.2, 0.5: 1.1}
+  b_g_scaled: {2: 1.4, 1.5: 1.3, 1.0: 1.2, 0.5: 1.1}
   # quadratic
-  b_0: {1.5: 1.3}
-  b_1: {1.5: 0.3}
-  b_2: {1.5: 0.1}
+  b_0: {1.5: 1.3, 1.0: 1.3}
+  b_1: {1.5: 0.3, 1.0: 0.3}
+  b_2: {1.5: 0.1, 1.0: 0.1}
   # tomographer
-  b_eff: {2: 2.9, 1.5: 2.7}
+  b_eff: {2: 2.9, 1.5: 2.7, 1.0: 2.7}
 
   # Shot noise
-  A_sn: {2: 1, 1.5: 1}
+  A_sn: {2: 1, 1.5: 1, 1.0: 1}
 
   # Cosmology
   cosmology_name: planck
@@ -71,10 +71,10 @@ LoTSS_DR2:
   # Inference
   mcmc_engine: emcee  # zeus, emcee
   continue_sampling: False
-  redshifts_to_fit: [deep_fields, tomographer]  # [deep_fields, tomographer]
-  fit_bias_to_tomo: True
-  correlations_to_use: [gg, gk]  # gg, gk, gt
-  to_infere: [b_g_scaled, A_sn, z_sfg, a, r, n]  # sigma8, b_g, b_g_scaled, b_0, b_1, b_2, A_sn, z_sfg, a, r, n, A_z_tail
+  redshifts_to_fit: [deep_fields]  # [deep_fields, tomographer]
+  fit_bias_to_tomo: False
+  correlations_to_use: [gg, gt]  # gg, gk, gt
+  to_infere: [b_0, b_1, b_2, A_sn, z_sfg, a, r, n]  # sigma8, b_g, b_g_scaled, b_0, b_1, b_2, A_sn, z_sfg, a, r, n, A_z_tail
   max_iterations: 50000
   n_walkers: 32
 

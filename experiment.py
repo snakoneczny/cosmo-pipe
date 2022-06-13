@@ -194,7 +194,7 @@ class Experiment:
 
     def get_log_prior(self, theta):
         prior_dict = {
-            'A_sn': (-np.inf, np.inf),
+            'A_sn': (0.8, 1.2),
             'A_z_tail': (0.5, 2.0),
             'Omega_m': (0, np.inf),
             'sigma8': (0, np.inf),
@@ -517,9 +517,9 @@ class Experiment:
             self.covariance_matrices['gauss'][transpose_corr_symbol] = np.transpose(
                 self.covariance_matrices['gauss'][correlation_pair])
 
-            if a1 + a2 == b1 + b2:
-                self.correlation_matrices['gauss'][correlation_pair] = get_correlation_matrix(
-                    self.covariance_matrices['gauss'][correlation_pair])
+            # if a1 + a2 == b1 + b2:
+            #     self.correlation_matrices['gauss'][correlation_pair] = get_correlation_matrix(
+            #         self.covariance_matrices['gauss'][correlation_pair])
 
     def set_data_vector(self):
         data_vectors = []
