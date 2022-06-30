@@ -13,7 +13,7 @@ HETDEX_LAT_RANGE = [43, 60]
 
 def plot_many_correlations_comparison(correlations_dict, correlation_symbol, is_raw=False, error_method='gauss',
                                       x_min=0, x_max=None, y_min=None, y_max=None, x_scale='linear', y_scale='log',
-                                      title=None):
+                                      title=None, rename_dict=None):
     marker = itertools.cycle(('o', 'v', 's', 'p', '*'))
     for corr_name, corr_df in correlations_dict.items():
         # Data
@@ -27,6 +27,10 @@ def plot_many_correlations_comparison(correlations_dict, correlation_symbol, is_
 
         # Upper plot, two correlation functions
         plt.errorbar(ell_arr, corr, yerr=error, label=corr_name, marker=next(marker), linestyle='', markersize=2)
+
+    if rename_dict:
+        for key in rename_dict.keys():
+            correlation_symbol = correlation_symbol.replace(key, rename_dict[key])
 
     plt.xlim(xmin=x_min, xmax=x_max)
     plt.ylim(ymin=y_min, ymax=y_max)
@@ -101,6 +105,7 @@ def plot_correlation_comparison(correlations_a, correlations_b, correlation_symb
 def plot_correlation(experiment, correlation_symbol, x_min=0, x_max=None, y_min=None, y_max=None, x_scale='linear',
                      y_scale='linear', title=None, with_error=True, is_raw=False):
     error_method = 'jackknife' if 'jackknife' in experiment.errors else 'gauss'
+    rename_dict = {'g': 'q'} if experiment.config.lss_survey_name == 'KiDS_QSO' else None
 
     # Data error bars
     y_err = None
@@ -133,6 +138,10 @@ def plot_correlation(experiment, correlation_symbol, x_min=0, x_max=None, y_min=
         eff_l_arr = experiment.binnings[correlation_symbol].get_effective_ells()
         ell_arr = dense_l_arr if dense_l_arr.shape[0] == data_to_plot.shape[0] else eff_l_arr
         plt.plot(ell_arr, data_to_plot, 'r', label='theory', markersize=2)
+
+    if rename_dict:
+        for key in rename_dict.keys():
+            correlation_symbol = correlation_symbol.replace(key, rename_dict[key])
 
     plt.xlim(xmin=x_min, xmax=x_max)
     plt.ylim(ymin=y_min, ymax=y_max)

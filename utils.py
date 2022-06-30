@@ -149,12 +149,17 @@ def get_correlation_matrix(covariance_matrix):
     return correlation_matrix
 
 
-def get_redshift_distribution(data=None, experiment=None, n_bins=50, z_col='Z_PHOTO_QSO', config=None, normalize=False):
+def get_redshift_distribution(data=None, experiment=None, n_bins=50, z_col='Z_PHOTO_QSO', config=None, normalize=False,
+                              z_max=None):
     if data is None:
         data = experiment.data.get('g')
 
     n_arr, z_arr = np.histogram(data[z_col], bins=n_bins)
     z_arr = np.array([(z_arr[i + 1] + z_arr[i]) / 2 for i in range(len(z_arr) - 1)])
+
+    if z_max:
+        n_arr = n_arr[z_arr < z_max]
+        z_arr = z_arr[z_arr < z_max]
 
     if normalize:
         area = simps(n_arr, z_arr)
@@ -340,6 +345,8 @@ def get_config(data_name, experiment_name=None, as_struct=False):
                         'A_z_tail']:
                 if key in config:
                     config[key] = config[key][config['flux_min_cut']]
+        elif config['lss_survey_name'] == 'KiDS_QSO':
+            config['qso_min_proba'] = config['qso_min_proba'][config['r_max']]
 
         return struct(**config)
 
@@ -427,7 +434,7 @@ def get_correlations_filename(config):
         raise ValueError('{} not implemented'.format(config.lss_survey_name))
 
     # This would have to be a different tag than the experiment tag
-    # if config.experiment_tag:
-    #     experiment_name += '__' + config.experiment_tag
+    if config.experiment_tag:
+        experiment_name += '__' + config.experiment_tag
 
     return experiment_name

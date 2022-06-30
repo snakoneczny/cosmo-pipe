@@ -203,6 +203,8 @@ class Experiment:
             'b_0': (-np.inf, np.inf),
             'b_1': (-np.inf, np.inf),
             'b_2': (-np.inf, np.inf),
+            'b_a': (0, np.inf),
+            'b_b': (0, np.inf),
             'z_sfg': (0, np.inf),
             'r': (0, np.inf),
             'n': (0, np.inf),
@@ -650,8 +652,17 @@ class Experiment:
         elif config.bias_model == 'quadratic':
             bias_params = [config.b_0, config.b_1, config.b_2]
             bias_arr = sum(bias_params[i] * np.power(z_arr, i) for i in range(len(bias_params)))
+        elif config.bias_model == 'quadratic_limited':
+            bias_arr = [config.b_a * (1 + z) ** 2 + config.b_b for z in z_arr]
         elif config.bias_model == 'tomographer':
-            bias_arr = config.b_eff * np.ones(len(z_arr))
+            bias_arr = config.b_eff_tomo * np.ones(len(z_arr))
+        elif config.bias_model == 'QSO':
+            # Values from the Shen et al. 2009, b(z=0) taken as copy of the first bias value
+            z_arr_qso = [0.0, 0.5, 1.13, 1.68, 2.18, 3.17, 3.84]
+            b_arr_qso = np.array([1.32, 1.32, 2.31, 2.96, 4.69, 7.76, 12.96])
+            # Make interpolation
+            f = interp1d(z_arr_qso, b_arr_qso)
+            bias_arr = config.b_eff_qso * f(z_arr)
 
         return bias_arr
 
@@ -736,6 +747,9 @@ class Experiment:
         coutns_map, mask = get_kids_qso_map(self.data['g'], self.config.nside)
         return coutns_map, mask, None
 
+    def get_gaia_stars_maps(self):
+        pass
+
     def set_data(self):
         logger.info('Setting data..')
         if self.config.lss_survey_name == 'LoTSS_DR2':
@@ -747,6 +761,7 @@ class Experiment:
                                             optical=self.config.is_optical)
         elif self.config.lss_survey_name == 'KiDS_QSO':
             self.data['g'] = get_kids_qsos(r_max=self.config.r_max, qso_min_proba=self.config.qso_min_proba)
+            # self.data['s'] = get_gaia_stars()
 
         self.are_data_ready = True
 
@@ -779,7 +794,17 @@ class Experiment:
         }
         self.get_redshift_dist_function = get_redshift_distribution_functions[self.config.lss_survey_name]
 
+        # Set data for photo-z distributions
+        if self.config.dn_dz_model == 'photo-z':
+            self.set_data()
+
     def set_name(self):
+        data_part = None
+        if self.config.lss_survey_name == 'LoTSS_DR2':
+            data_part = '{}mJy_{}SNR'.format(self.config.flux_min_cut, self.config.signal_to_noise)
+        elif self.config.lss_survey_name == 'KiDS_QSO':
+            data_part = 'r-max-{}'.format(self.config.r_max)
+
         l_range = self.config.l_range['gg']
         correlations_part = '_'.join([
             '-'.join(self.correlation_symbols),
@@ -792,7 +817,7 @@ class Experiment:
 
         bias_part = 'bias_' + self.config.bias_model
         mcmc_part = self.config.mcmc_engine + '_' + '_'.join(self.arg_names)
-        experiment_name_parts = [correlations_part, redshift_part, bias_part, mcmc_part]
+        experiment_name_parts = [data_part, correlations_part, redshift_part, bias_part, mcmc_part]
 
         if hasattr(self.config, 'experiment_tag') and self.config.experiment_tag is not None and len(
                 self.config.experiment_tag) > 0:

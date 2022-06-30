@@ -59,7 +59,7 @@ LoTSS_DR2:
   b_1: {1.5: 0.3, 1.0: 0.3}
   b_2: {1.5: 0.1, 1.0: 0.1}
   # tomographer
-  b_eff: {2: 2.9, 1.5: 2.7, 1.0: 2.7}
+  b_eff_tomo: {2: 2.9, 1.5: 2.7, 1.0: 2.7}
 
   # Shot noise
   A_sn: {2: 1, 1.5: 1, 1.0: 1}
@@ -118,14 +118,15 @@ LoTSS_DR1:
   n_walkers: 32
 
 
+# Parameters are given as a function of limiting magnitude
 KiDS_QSO:
   # Data
   lss_survey_name: KiDS_QSO
-  r_max: 21
-  qso_min_proba: 0.9
+  r_max: 23
+  qso_min_proba: {21: 0.9, 22: 0.9, 23: 0.998, 23.5: 0.998}  # {21: 0.9, 22: 0.9, 23: 0.998, 23.5: 0.998}
 
   # Maps
-  lss_mask_name: mask_coverage
+  lss_mask_name: mask_nside=256
   nside: 512
 
   # Correlations
@@ -133,25 +134,32 @@ KiDS_QSO:
   read_covariance_flag: True
   error_method: gauss  # jackknife, gauss
   l_range: {
-    gg: [52, 502],  # 252, 502
-    gk: [2, 502],  # 252, 502
+    gg: [52, 552],
+    gk: [2, 552],
+#    gs: [52, 502],
+#    ss: [52, 502],
   }
   ells_per_bin: {
     gg: 50,
     gk: 50,
+#    gs: 50,
+#    ss: 50,
   }
 
   # Redshift
   dn_dz_model: 'photo-z'  # 'photo-z', 'tomographer'
 
   # Bias
-  bias_model: 'scaled'  # constant, scaled, quadratic, tomographer
-  b_g: 1.2
-  b_g_scaled: 1.1
-  b_0: 1.5
-  b_1: 1.2
-  b_2: 1.1
-  b_eff: 2.0
+  bias_model: 'quadratic_limited'
+  b_g: 1.2  # Constant
+  b_g_scaled: 1.2  # scaled
+  b_a: 0.6  # quadratic_limited
+  b_b: 0.1
+  b_0: 1.0  # quadratic
+  b_1: 1.0
+  b_2: 1.0
+  b_eff_tomo: 1.0  # tomographer
+  b_eff_qso: 1.0  # QSO
 
   # Shot noise
   A_sn: 1
@@ -166,7 +174,7 @@ KiDS_QSO:
   redshifts_to_fit: []  # [tomographer]
   fit_bias_to_tomo: False
   correlations_to_use: [gg, gk]
-  to_infere: [b_g_scaled]  # b_g, b_g_scaled, b_0, b_1, b_2, A_sn
+  to_infere: [b_a, b_b]  # b_g, b_g_scaled, b_0, b_1, b_2, A_sn
   max_iterations: 50000
   n_walkers: 32
 

@@ -17,11 +17,14 @@ import zeus
 from env_config import PROJECT_PATH
 from experiment import Experiment
 from utils import struct, get_config, decouple_correlation
+from bias import get_sherwin_qso_bias
 
 
-def compare_biases(experiments, data_name, x_scale='log', x_max=None, y_max=None):
+def compare_biases(experiments, data_name, x_scale='log', x_max=None, y_max=None, add_qsos=False):
+    n_exp = len(experiments)
+    alpha = 1.0 / n_exp
+
     plt.figure()
-
     for experiment_label, experiment_name in experiments:
         config, samples, _, _ = get_samples(experiment_name, data_name, print_stats=False)
 
@@ -54,7 +57,12 @@ def compare_biases(experiments, data_name, x_scale='log', x_max=None, y_max=None
         if x_scale == 'log':
             z_arr = np.log(z_arr + 1)
         plt.plot(z_arr, bias_arr, label=experiment_label)
-        plt.fill_between(z_arr, bias_arr_min, bias_arr_max, alpha=0.2)
+        plt.fill_between(z_arr, bias_arr_min, bias_arr_max, alpha=alpha)
+
+    if add_qsos:
+        z_arr, b_arr, b_err = get_sherwin_qso_bias()
+        plt.errorbar(z_arr, b_arr, yerr=b_err, marker='s', color='k', linestyle='', markersize=3,
+                     label='Sherwin et al. 2012')
 
     plt.legend(loc='upper left')
     plt.xlabel('log(1 + z)' if x_scale == 'log' else 'z')
@@ -305,11 +313,18 @@ def make_param_plots(config, arg_names, samples):
         plt.axvline(l_range[0], label='ell range', color='green')
         plt.axvline(l_range[1], color='green')
 
-        plt.xlim(xmin=2)
+        # TODO: different limits for C_qq and C_gg
         if correlation_symbol == 'gg':
-            plt.ylim(ymin=1e-8, ymax=1e-5)
+            plt.ylim(ymin=1e-8, ymax=1e-3)
         elif correlation_symbol == 'gk':
-            plt.ylim(ymin=1e-9)
+            plt.ylim(ymin=1e-9, ymax=1e-6)
+
+        rename_dict = {'g': 'q'} if experiment.config.lss_survey_name == 'KiDS_QSO' else None
+        if rename_dict:
+            for key in rename_dict.keys():
+                correlation_symbol = correlation_symbol.replace(key, rename_dict[key])
+
+        plt.xlim(xmin=2)
         plt.yscale('log')
         plt.xlabel('$\\ell$', fontsize=16)
         plt.ylabel('$C_\\ell^{{{}}}$'.format(correlation_symbol), fontsize=16)

@@ -18,7 +18,7 @@ config.redshifts_to_fit = []
 config.fit_bias_to_tomo = False
 print(config.__dict__)
 
-# Iterate thorugh parameters
+# Iterate through parameters
 for r_max in [21, 22, 23, 23.5]:
     for qso_min_proba in [0.9, 0.98, 0.998, 0.999]:
         print('Processing: r_max={}, qso_min_proba={}'.format(r_max, qso_min_proba))
