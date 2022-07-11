@@ -6,13 +6,13 @@ import warnings
 
 import numpy as np
 from matplotlib import pyplot as plt
+import seaborn as sns
 from tqdm import tqdm_notebook
 from copy import deepcopy
 import h5py
 from scipy.interpolate import interp1d
 import emcee
 import zeus
-# from getdist import MCSamples, plots
 
 from env_config import PROJECT_PATH
 from experiment import Experiment
@@ -27,36 +27,41 @@ def compare_biases(experiments, data_name, x_scale='log', x_max=None, y_max=None
     plt.figure()
     for experiment_label, experiment_name in experiments:
         config, samples, _, _ = get_samples(experiment_name, data_name, print_stats=False)
+        arg_names = config['to_infere']
 
-        # Final estimate
-        best_fit_params = {}
-        best_fit_params_min = {}
-        best_fit_params_max = {}
-        labels = config['to_infere']
-        for i in range(len(labels)):
-            mcmc = np.percentile(samples[:, i], [16, 50, 84])
-            best_fit_params[labels[i]] = mcmc[1]
-            best_fit_params_min[labels[i]] = mcmc[0]
-            best_fit_params_max[labels[i]] = mcmc[2]
+        # Create experiment based on config, only to use the get_bias function
+        config = struct(**config)
+        experiment = Experiment(config, set_data=False, set_maps=False)
 
-        config_mean = struct(**config)
-        config_min = struct(**config)
-        config_max = struct(**config)
-        config_mean.__dict__.update(best_fit_params)
-        config_min.__dict__.update(best_fit_params_min)
-        config_max.__dict__.update(best_fit_params_max)
-
-        experiment = Experiment(config_mean, set_data=False, set_maps=False)
-        z_arr, _ = experiment.get_redshift_dist_function(config=config_mean, normalize=False)
+        # Get z array
+        z_arr, _ = experiment.get_redshift_dist_function(config=config, normalize=False)
         if x_max:
             z_arr = z_arr[z_arr < x_max]
-        bias_arr = experiment.get_bias(z_arr, config=config_mean)
-        bias_arr_min = experiment.get_bias(z_arr, config=config_min)
-        bias_arr_max = experiment.get_bias(z_arr, config=config_max)
+
+        # Iterate samples
+        bias_arr_store = []
+        inds = np.random.randint(len(samples), size=1000)
+        for ind in inds:
+            # Update data params
+            sample = samples[ind]
+            to_update = dict(zip(arg_names, sample))
+            config.__dict__.update(to_update)
+
+            # Store bias function
+            bias_arr_store.append(experiment.get_bias(z_arr, experiment.cosmology, config))
+        bias_arr_store = np.array(bias_arr_store)
+
+        bias_arr_mean, bias_arr_min, bias_arr_max = [], [], []
+        for i in range(len(z_arr)):
+            min, mean, max = np.percentile(bias_arr_store[:, i], [16, 50, 84])
+            bias_arr_mean.append(mean)
+            bias_arr_min.append(min)
+            bias_arr_max.append(max)
 
         if x_scale == 'log':
             z_arr = np.log(z_arr + 1)
-        plt.plot(z_arr, bias_arr, label=experiment_label)
+
+        plt.plot(z_arr, bias_arr_mean, label=experiment_label)
         plt.fill_between(z_arr, bias_arr_min, bias_arr_max, alpha=alpha)
 
     if add_qsos:
@@ -135,26 +140,20 @@ def show_mcmc_report(experiment_name, data_name, quick=False):
             _, _ = zeus.cornerplot(samples_to_traingle, labels=labels)  # , truth=truths)
             plt.show()
 
-    # getdist triangle plot
-    # pp_dict = {
-    #     'Omega_m': '\Omega_m',
-    #     'sigma8': '\sigma_8',
-    #     'b_g_scaled': 'b_g',
-    # }
-    # pp_labels = [lbl if lbl not in pp_dict else pp_dict[lbl] for lbl in labels]
-    # samples_mc = MCSamples(samples=samples, names=labels, labels=pp_labels,
-    #                        settings={'smooth_scale_2D': 0.3, 'smooth_scale_1D': 0.3})
-    #
-    # g = plots.get_single_plotter()
-    # g.plot_1d(samples_mc, 'sigma8', normalized=True, lims=[0.5, 1.1])
-    # g.add_x_marker(0.811)
-    # plt.show()
-    #
-    # g = plots.get_subplot_plotter()
-    # # g.triangle_plot(samples_mc, ['b_g_scaled', 'sigma8'], filled=True, markers={'sigma8': 0.811})
-    # # lims={'b_g_scaled': (0.5, 2.5, 1), 'sigma8': (0.5, 1.2, 1)})
-    # g.triangle_plot(samples_mc, filled=True, markers={'sigma8': 0.811})
-    # plt.show()
+
+    if 'sigma8' in labels:
+        # pp_dict = {
+        #     'Omega_m': '\Omega_m',
+        #     'sigma8': '\sigma_8',
+        #     'b_g_scaled': 'b_g',
+        # }
+        # pp_labels = [lbl if lbl not in pp_dict else pp_dict[lbl] for lbl in labels]
+        sns.kdeplot(samples[:, labels.index('sigma8')], bw=0.5, label='LoTSS DR2 x CMB')
+        plt.xlabel('$\sigma_8$')
+        plt.ylabel('probability')
+        plt.axvline(x=0.811, ymin=0, color='r', label='Planck')
+        plt.legend()
+        plt.show()
 
     # Tau statistics
     plot_mean_tau(tau_arr)

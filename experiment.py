@@ -152,9 +152,13 @@ class Experiment:
         config.__dict__.update(to_update)
         cosmology_params = self.get_updated_cosmology_parameters(to_update)
 
+        # Check redshift prior
+        z_arr, n_arr = self.get_redshift_dist_function(config=config, normalize=False)
+        if (n_arr < 0).any():
+            return -np.inf
+
         # Check the bias prior if present
         if self.config.bias_model == 'quadratic':
-            z_arr, n_arr = self.get_redshift_dist_function(config=config, normalize=False)
             bias_arr = self.get_bias(z_arr, self.cosmology, config)
             if (bias_arr <= 0).any():
                 return -np.inf
@@ -368,13 +372,16 @@ class Experiment:
                     self.dn_dz_to_fit[-1] *= growth_factor
                     self.dn_dz_err_to_fit[-1] *= growth_factor
 
+            # TODO: use get redshift function
             elif redshift_to_fit == 'deep_fields':
-                deepfields_file = 'LoTSS/DR2/pz_deepfields/Pz_booterrors_wsum_deepfields_{:.1f}mJy.fits'.format(
+                deepfields_file = 'LoTSS/DR2/pz_deepfields/AllFields_Pz_dat_Fllim1_{:.1f}_Fllim2_0.0.fits'.format(
                     self.config.flux_min_cut)
                 pz_deepfields = read_fits_to_pandas(os.path.join(DATA_PATH, deepfields_file))
-                self.dz_to_fit.append(pz_deepfields['zbins'])
-                self.dn_dz_to_fit.append(pz_deepfields['pz'])
-                self.dn_dz_err_to_fit.append(pz_deepfields['error_boot'])
+
+                idx = pz_deepfields['z'] < 6
+                self.dz_to_fit.append(pz_deepfields['z'][idx])
+                self.dn_dz_to_fit.append(pz_deepfields['Nz_weighted_fields'][idx])
+                self.dn_dz_err_to_fit.append(pz_deepfields['Nz_fields_err_combafter'][idx])
 
             total_length += len(self.dz_to_fit[-1])
         self.inference_covariance = np.zeros((total_length, total_length))

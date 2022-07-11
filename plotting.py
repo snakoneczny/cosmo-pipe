@@ -80,6 +80,7 @@ def plot_correlation_comparison(correlations_a, correlations_b, correlation_symb
     axs[0].set_ylabel('$C_\\ell$', fontsize=16)
     axs[0].grid()
     axs[0].legend(loc='upper right')
+    axs[0].set_title(title)
 
     # Lower plot, ratio of the correlations
     ratio = corr_a / corr_b
@@ -98,7 +99,6 @@ def plot_correlation_comparison(correlations_a, correlations_b, correlation_symb
     )
     axs[1].set_ylabel(y_label, fontsize=16)
     axs[1].grid()
-    plt.title(title)
     plt.show()
 
 

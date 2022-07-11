@@ -148,10 +148,14 @@ def get_lotss_redshift_distribution(config=None, model='power_law', z_sfg=None, 
         A_z_tail = getattr(config, 'A_z_tail', None)
 
     if model == 'deep_fields':
-        deepfields_file = 'LoTSS/DR2/pz_deepfields/Pz_booterrors_wsum_deepfields_{:.1f}mJy.fits'.format(flux_cut)
+        # deepfields_file = 'LoTSS/DR2/pz_deepfields/Pz_booterrors_wsum_deepfields_{:.1f}mJy.fits'.format(flux_cut)
+        deepfields_file = 'LoTSS/DR2/pz_deepfields/AllFields_Pz_dat_Fllim1_{:.1f}_Fllim2_0.0.fits'.format(flux_cut)
         pz_deepfields = read_fits_to_pandas(os.path.join(DATA_PATH, deepfields_file))
-        z_arr = pz_deepfields['zbins']
-        n_arr = pz_deepfields['pz']  # pz_boot_mean
+
+        # z_arr = pz_deepfields['zbins']
+        # n_arr = pz_deepfields['pz']  # pz_boot_mean
+        z_arr = pz_deepfields['z']
+        n_arr = pz_deepfields['Nz_weighted_fields']
 
     elif model == 'tomographer':
         filename = 'LoTSS/DR2/tomographer/{}mJy_{}SNR_srl_catalog_inner.csv'.format(
@@ -176,6 +180,9 @@ def get_lotss_redshift_distribution(config=None, model='power_law', z_sfg=None, 
             n_arr = ((z_arr / z_0) ** 2) / (1 + (z_arr / z_0) ** 2) / (1 + (z_arr / z_tail) ** gamma)
         else:
             raise Exception('Not known redshift distribution model: {}'.format(model))
+
+    if z_max:
+        z_arr, n_arr = z_arr[z_arr < z_max], n_arr[z_arr < z_max]
 
     if A_z_tail:
         n_arr[z_arr > 3.5] *= A_z_tail
