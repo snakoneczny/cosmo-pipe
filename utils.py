@@ -341,8 +341,8 @@ def get_config(data_name, experiment_name=None, as_struct=False):
 
         # Dictionary fields, flatten to proper values
         if config['lss_survey_name'] == 'LoTSS_DR2':
-            for key in ['z_tail', 'z_sfg', 'a', 'r', 'n', 'b_g', 'b_g_scaled', 'b_0', 'b_1', 'b_2', 'b_eff', 'A_sn',
-                        'A_z_tail']:
+            for key in ['z_tail', 'z_sfg', 'a', 'r', 'offset', 'a_2', 'r_2', 'n', 'b_g', 'b_g_scaled', 'b_a', 'b_b', 'b_0', 'b_1', 'b_2',
+                        'b_eff_tomo', 'A_sn', 'A_z_tail']:
                 if key in config:
                     config[key] = config[key][config['flux_min_cut']]
         elif config['lss_survey_name'] == 'KiDS_QSO':
@@ -419,16 +419,19 @@ def read_covariances(experiment):
 
 def get_correlations_filename(config):
     correlation_symbols = list(config.l_range.keys())
+    ells_per_bin = list(config.ells_per_bin.values())[0]
     if config.lss_survey_name == 'LoTSS_DR2':
         optical_name = 'opt' if config.is_optical else 'srl'
+        correlation_symbols_tag = 'gg-gt' if 'gt' in correlation_symbols else 'gg-gk'
         experiment_name = '{}_{}__{}__{}mJy_snr={}_nside={}_{}_bin={}'.format(
             config.lss_survey_name, optical_name, config.lss_mask_name, config.flux_min_cut, config.signal_to_noise,
-            config.nside, '-'.join(correlation_symbols), config.ells_per_bin['gg']
+            config.nside, correlation_symbols_tag, ells_per_bin
         )
     elif config.lss_survey_name == 'KiDS_QSO':
+        correlation_symbols_tag = 'gg-gk'
         experiment_name = '{}__{}__r-max={}_qso-min-proba={}_nside={}_{}_bin={}'.format(
             config.lss_survey_name, config.lss_mask_name, config.r_max, config.qso_min_proba,
-            config.nside, '-'.join(correlation_symbols), config.ells_per_bin['gg']
+            config.nside, correlation_symbols_tag, ells_per_bin
         )
     else:
         raise ValueError('{} not implemented'.format(config.lss_survey_name))

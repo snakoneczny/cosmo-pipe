@@ -135,13 +135,17 @@ def get_redshift_distributions(data_optical, data_skads):
     return redshift_distributions
 
 
-def get_lotss_redshift_distribution(config=None, model='power_law', z_sfg=None, a=None, r=None, n=1, z_tail=None,
-                                    flux_cut=None, A_z_tail=None, z_arr=None, z_max=6, normalize=False):
+def get_lotss_redshift_distribution(config=None, model='power_law', z_sfg=None, a=None, r=None, a_2=None, r_2=None,
+                                    offset=None, n=1, z_tail=None, flux_cut=None, A_z_tail=None, z_arr=None, z_max=6,
+                                    normalize=False):
     if config:
         model = config.dn_dz_model
         z_sfg = getattr(config, 'z_sfg', None)
         a = getattr(config, 'a', None)
         r = getattr(config, 'r', None)
+        offset = getattr(config, 'offset', None)
+        a_2 = getattr(config, 'a_2', None)
+        r_2 = getattr(config, 'r_2', None)
         n = getattr(config, 'n', None)
         z_tail = getattr(config, 'z_tail', None)
         flux_cut = getattr(config, 'flux_min_cut', None)
@@ -159,7 +163,7 @@ def get_lotss_redshift_distribution(config=None, model='power_law', z_sfg=None, 
 
     elif model == 'tomographer':
         filename = 'LoTSS/DR2/tomographer/{}mJy_{}SNR_srl_catalog_inner.csv'.format(
-            config.flux_min_cut, config.signal_to_noise_ratio)
+            config.flux_min_cut, config.signal_to_noise)
         tomographer = pd.read_csv(os.path.join(DATA_PATH, filename))
         z_arr = tomographer['z'][:-1]
         n_arr = tomographer['dNdz_b'][:-1]
@@ -174,6 +178,12 @@ def get_lotss_redshift_distribution(config=None, model='power_law', z_sfg=None, 
         if model == 'power_law':
             # n_arr = (z_arr ** 2) / (1 + z_arr) * (np.exp((-z_arr / z_sfg)) + r * np.exp(-z_arr / z_agn))
             n_arr = n * (z_arr ** 2) / (1 + z_arr) * (np.exp((-z_arr / z_sfg)) + r ** 2 / (1 + z_arr) ** a)
+        elif model == 'double_power_law':
+            n_arr = n * (z_arr ** 2) / (1 + z_arr) * (np.exp((-z_arr / z_sfg)) + r ** 2 / (1 + z_arr) ** a)
+            z_arr_offset = z_arr - offset
+            n_arr_2 = n * (z_arr_offset ** 2) / (1 + z_arr_offset) * (r_2 ** 2 / (1 + z_arr_offset) ** a_2)
+            n_arr_2[z_arr <= offset] = 0
+            n_arr += n_arr_2
         elif model == 'z_tail':
             z_0 = 0.1
             gamma = 3.5

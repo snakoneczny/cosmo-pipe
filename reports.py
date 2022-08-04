@@ -5,6 +5,7 @@ import logging
 import warnings
 
 import numpy as np
+import pandas as pd
 from matplotlib import pyplot as plt
 import seaborn as sns
 from tqdm import tqdm_notebook
@@ -18,6 +19,66 @@ from env_config import PROJECT_PATH
 from experiment import Experiment
 from utils import struct, get_config, decouple_correlation
 from bias import get_sherwin_qso_bias
+
+
+def print_lotss_constraints_table(rows, data_part, bias_models):
+    df = pd.DataFrame()
+
+    for row in rows:
+        correlations = row[0]
+        redshifts = row[1]
+        cosmo_params = row[2]
+
+        for bias_model in bias_models:
+            for with_A_sn in [False, True]:
+                redshift_part = '_'.join(redshifts)
+
+                param_part = 'z_sfg_a_r'
+                if 'tomographer' in redshifts:
+                    param_part += '_n'
+                if with_A_sn:
+                    param_part = 'A_sn_' + param_part
+
+                if bias_model == 'constant':
+                    param_part = 'b_g_' + param_part
+                elif bias_model == 'scaled':
+                    param_part = 'b_g_scaled_' + param_part
+                elif bias_model == 'quadratic_limited':
+                    param_part = 'b_a_b_b_' + param_part
+                elif bias_model == 'quadratic':
+                    param_part = 'b_0_b_1_b_2_' + param_part
+
+                if cosmo_params is not None and len(cosmo_params) > 0:
+                    param_part = '_'.join(cosmo_params) + '_' + param_part
+
+
+                experiment_name = '{}__{}_ell-52-502__redshift_power-law_{}__bias_{}__emcee_{}'.format(
+                    data_part, '-'.join(correlations), redshift_part, bias_model, param_part)
+
+                config, samples, _, _ = get_samples(experiment_name, data_name='LoTSS_DR2', print_stats=False)
+                if config:
+                    labels = config['to_infere']
+
+                    for i, label in enumerate(labels):
+                        mcmc = np.percentile(samples[:, i], [16, 50, 84])
+                        q = np.diff(mcmc)
+
+                        if label in ['b_g', 'b_g_scaled', 'b_a', 'b_b', 'b_0', 'b_1', 'b_2', 'A_sn', 'sigma8']:
+                            row_key = ' + '.join(correlations)
+                            if 'deep-fields' in redshifts:
+                                row_key += ' + DF'
+                            if 'tomographer' in redshifts:
+                                row_key += ' + tomo'
+                            if with_A_sn:
+                                row_key += ' + A_sn'
+                            if cosmo_params is not None and len(cosmo_params) > 0:
+                                row_key += (' + ' + ' + '.join(cosmo_params))
+                            col_key = '{} {}'.format(bias_model, label)
+
+                            df.loc[row_key, col_key] = '${:.2f}^{{+{:.2f}}}_{{-{:.2f}}}$'.format(mcmc[1], q[1], q[0])
+
+    display(df)
+    print(df.to_latex(escape=False, na_rep=''))
 
 
 def compare_biases(experiments, data_name, x_scale='log', x_max=None, y_max=None, add_qsos=False):
@@ -107,9 +168,12 @@ def compare_redshifts(experiments, data_name):
 
 def show_mcmc_report(experiment_name, data_name, quick=False):
     logging.basicConfig(level=os.environ.get('LOGLEVEL', 'ERROR'))
+    config, samples, log_prob_samples, tau_arr = get_samples(experiment_name, data_name, print_stats=True)
+
+    # Tau statistics
+    plot_mean_tau(tau_arr)
 
     # Final estimate
-    config, samples, log_prob_samples, tau_arr = get_samples(experiment_name, data_name, print_stats=True)
     best_fit_params = {}
     labels = config['to_infere']
     print('------------------------------')
@@ -117,7 +181,7 @@ def show_mcmc_report(experiment_name, data_name, quick=False):
         mcmc = np.percentile(samples[:, i], [16, 50, 84])
         best_fit_params[labels[i]] = mcmc[1]
         q = np.diff(mcmc)
-        print('{} = {:.2f} (+{:.2f}, -{:.2f})'.format(labels[i], mcmc[1], q[0], q[1]))
+        print('{} = {:.2f} (+{:.2f}, -{:.2f})'.format(labels[i], mcmc[1], q[1], q[0]))
     print('------------------------------')
 
     # Sigmas and chi-squared
@@ -140,7 +204,6 @@ def show_mcmc_report(experiment_name, data_name, quick=False):
             _, _ = zeus.cornerplot(samples_to_traingle, labels=labels)  # , truth=truths)
             plt.show()
 
-
     if 'sigma8' in labels:
         # pp_dict = {
         #     'Omega_m': '\Omega_m',
@@ -155,9 +218,6 @@ def show_mcmc_report(experiment_name, data_name, quick=False):
         plt.legend()
         plt.show()
 
-    # Tau statistics
-    plot_mean_tau(tau_arr)
-
     # Samples history
     plot_samples_history(labels, samples, log_prob_samples)
 
@@ -167,8 +227,10 @@ def show_mcmc_report(experiment_name, data_name, quick=False):
 
 
 def get_samples(experiment_name, data_name, print_stats=False):
-    config = get_config(data_name, experiment_name)
     mcmc_folder_path = os.path.join(PROJECT_PATH, 'outputs/MCMC/{}/{}'.format(data_name, experiment_name))
+    if not os.path.exists(mcmc_folder_path):
+        return None, None, None, None
+    config = get_config(data_name, experiment_name)
 
     if 'mcmc_engine' in config and config['mcmc_engine'] == 'zeus':
         samples, log_prob_samples, tau_arr, burnin, thin = get_zeus_samples(experiment_name, mcmc_folder_path)
@@ -178,7 +240,8 @@ def get_samples(experiment_name, data_name, print_stats=False):
             experiment_name, mcmc_folder_path, config)
         if print_stats:
             mean_acceptance_fraction = np.mean(emcee_sampler.acceptance_fraction) * 100
-            print('Mean acceptance fraction: {:.1f}%'.format(mean_acceptance_fraction))
+            if print_stats:
+                print('Mean acceptance fraction: {:.1f}%'.format(mean_acceptance_fraction))
 
     if print_stats:
         print('Final chain length: {}; burn-in: {}; thin: {}'.format(samples.shape[0], burnin, thin))
@@ -278,7 +341,7 @@ def make_param_plots(config, arg_names, samples):
         for redshift_to_fit in experiment.config.redshifts_to_fit:
             normalize = False if redshift_to_fit == 'tomographer' else True
             z_arr, n_arr = experiment.get_redshift_dist_function(config=config, normalize=normalize)
-            if redshift_to_fit == 'tomographer' and config.fit_bias_to_tomo:
+            if redshift_to_fit == 'tomographer':
                 bias_arr = experiment.get_bias(z_arr, experiment.cosmology, config)
                 n_arr *= bias_arr
             redshift_functions_store[redshift_to_fit].append(n_arr)
@@ -344,7 +407,10 @@ def make_param_plots(config, arg_names, samples):
 
         plt.legend()
         plt.xlabel('z')
-        plt.ylabel('dN/dz')
+        if redshift_to_fit == 'tomographer':
+            plt.ylabel('b * dN/dz')
+        else:
+            plt.ylabel('dN/dz')
         plt.show()
 
     # Plot bias
@@ -359,7 +425,7 @@ def make_param_plots(config, arg_names, samples):
 def plot_mean_tau(autocorr_time_arr):
     n = np.arange(1, len(autocorr_time_arr) + 1)
     plt.figure()
-    plt.plot(n, n / 50.0, '--k')
+    plt.plot(n, n / 50, '--k')
     plt.plot(n, autocorr_time_arr)
     plt.xlabel('number of steps')
     plt.ylabel(r'mean $\hat{\tau}$')

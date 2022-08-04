@@ -185,7 +185,7 @@ class Experiment:
         for i, redshift_to_fit in enumerate(self.config.redshifts_to_fit):
             normalize = False if redshift_to_fit == 'tomographer' else True
             z_arr, n_arr = self.get_redshift_dist_function(config=config, z_arr=self.dz_to_fit[i], normalize=normalize)
-            if redshift_to_fit == 'tomographer' and self.config.fit_bias_to_tomo:
+            if redshift_to_fit == 'tomographer':
                 bias_arr = self.get_bias(z_arr, self.cosmology, config)
                 n_arr *= bias_arr
             model_correlations = np.append(model_correlations, n_arr)
@@ -211,6 +211,8 @@ class Experiment:
             'b_b': (0, np.inf),
             'z_sfg': (0, np.inf),
             'r': (0, np.inf),
+            'r_2': (0.001, 1.0),
+            'offset': (1.3, 1.9),
             'n': (0, np.inf),
         }
 
@@ -258,13 +260,16 @@ class Experiment:
             tau_arr = np.append(tau_arr, [np.mean(tau)])
             np.save(self.tau_filename, tau_arr)
 
+            if tau_arr[-1] * 50 < emcee_sampler.iteration:
+                break
+
             # TODO: not working properly
-            if len(tau_arr) > 1:
-                tau_change = np.abs(tau_arr[-2] - tau) / tau
-                converged = np.all(tau * 50 < emcee_sampler.iteration)
-                converged &= np.all(tau_change < 0.1)
-                if converged:
-                    break
+            # if len(tau_arr) > 1:
+            #     tau_change = np.abs(tau_arr[-2] - tau) / tau
+            #     converged = np.all(tau * 50 < emcee_sampler.iteration)
+            #     converged &= np.all(tau_change < 0.1)
+            #     if converged:
+            #         break
 
     def set_walkers_starting_params(self):
         p0 = []
@@ -367,10 +372,10 @@ class Experiment:
                 self.dn_dz_err_to_fit.append(tomographer['dNdz_b_err'][:-1])
 
                 # Scale tomographer with D(z), it will allow to skip the scaling process in the get_log_prob function
-                if self.config.bias_model == 'scaled':
-                    growth_factor = ccl.growth_factor(self.cosmology, 1. / (1. + self.dz_to_fit[-1]))
-                    self.dn_dz_to_fit[-1] *= growth_factor
-                    self.dn_dz_err_to_fit[-1] *= growth_factor
+                # if self.config.bias_model == 'scaled':
+                #     growth_factor = ccl.growth_factor(self.cosmology, 1. / (1. + self.dz_to_fit[-1]))
+                #     self.dn_dz_to_fit[-1] *= growth_factor
+                #     self.dn_dz_err_to_fit[-1] *= growth_factor
 
             # TODO: use get redshift function
             elif redshift_to_fit == 'deep_fields':
@@ -812,7 +817,7 @@ class Experiment:
         elif self.config.lss_survey_name == 'KiDS_QSO':
             data_part = 'r-max-{}'.format(self.config.r_max)
 
-        l_range = self.config.l_range['gg']
+        l_range = list(self.config.l_range.values())[0]
         correlations_part = '_'.join([
             '-'.join(self.correlation_symbols),
             'ell-{}-{}'.format(l_range[0], l_range[1]),
