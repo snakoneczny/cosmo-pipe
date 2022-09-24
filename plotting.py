@@ -1,5 +1,6 @@
 import math
 import itertools
+import copy
 
 import numpy as np
 from matplotlib import pyplot as plt
@@ -155,16 +156,41 @@ def plot_correlation(experiment, correlation_symbol, x_min=0, x_max=None, y_min=
     plt.show()
 
 
+def plot_covariance_matrices(experiment, correlation_symbols=None, error_method='jackknife'):
+    correlation_symbols = experiment.correlation_symbols if correlation_symbols is None else correlation_symbols
+    for correlation_symbol in correlation_symbols:
+        fig, ax = plt.subplots()
+
+        bin_range = experiment.bin_range[correlation_symbol]
+        to_plot = experiment.covariance_matrices[error_method]['{}-{}'.format(correlation_symbol, correlation_symbol)]
+        to_plot = to_plot[bin_range[0]:bin_range[1], bin_range[0]:bin_range[1]]
+
+        cax = ax.matshow(to_plot, interpolation=None)
+        fig.colorbar(cax)
+
+        # effective_ells = experiment.binnings[correlation_symbol].get_effective_ells()
+        # ax.xaxis.set_major_formatter(FormatStrFormatter('%.1f'))
+        # ax.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
+        # ax.set_xticklabels(effective_ells)
+        # ax.set_yticklabels(effective_ells)
+
+        ax.xaxis.set_ticks_position('bottom')
+        ax.yaxis.set_ticks_position('left')
+        plt.title('$C_\\ell^{{{}}}$'.format(correlation_symbol))  # , fontsize=16)
+        plt.show()
+
+
 def plot_correlation_matrix(experiment):
+    n_bins = sum([experiment.n_ells[corr_symbol] for corr_symbol in experiment.config.correlations_to_use])
     fig = plt.figure()
     ax = fig.add_subplot(111)
-    cax = ax.matshow(experiment.inference_correlation, interpolation=None)
+    cax = ax.matshow(experiment.inference_correlation[:n_bins, :n_bins], interpolation=None)
     fig.colorbar(cax)
 
     half_ticks = []
     lines = []
     next_start = -0.5
-    for correlation_symbol in experiment.correlation_symbols:
+    for correlation_symbol in experiment.config.correlations_to_use:
         n_ells = experiment.n_ells[correlation_symbol]
         half_ticks.append(next_start + n_ells / 2)
         next_start += n_ells
@@ -181,6 +207,7 @@ def plot_correlation_matrix(experiment):
     correlation_symbols = [pretty_print_corr_symbol(corr_symbol) for corr_symbol in experiment.correlation_symbols]
     ax.set_xticklabels(correlation_symbols)
     ax.set_yticklabels(correlation_symbols)
+    plt.show()
 
 
 def pretty_print_corr_symbol(correlation_symbol):
@@ -235,11 +262,14 @@ def plot_jackknife_regions(experiment, regions):
             plt.plot(lon_range_b, [lat] * len(lon_range_b), 'b')
 
 
-def my_mollview(map, fwhm=0, unit=None, cmap='jet', zoom=False, rot=None):
+def my_mollview(map, additional_mask=None, fwhm=0, unit=None, cmap='jet', zoom=False, rot=None, format=None):
+    if additional_mask is not None:
+        map = copy.copy(map)
+        map.mask = np.logical_or(map.mask, np.logical_not(additional_mask))
     if fwhm > 0:
         map = hp.sphtfunc.smoothing(map, fwhm=math.radians(fwhm))
     view_func = hp.zoomtool.mollzoom if zoom else hp.mollview
-    view_func(map, cmap=cmap, unit=unit, rot=rot)
+    view_func(map, cmap=cmap, unit=unit, rot=rot, title='', format=format)
     hp.graticule()
 
 

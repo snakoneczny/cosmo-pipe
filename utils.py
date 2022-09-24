@@ -10,7 +10,6 @@ import pymaster as nmt
 import pyccl as ccl
 import yaml
 from scipy.integrate import simps
-import pandas as pd
 import json
 
 from env_config import PROJECT_PATH
@@ -351,35 +350,39 @@ def get_config(data_name, experiment_name=None, as_struct=False):
         return struct(**config)
 
 
-# TODO: Save covariance matrices
-# TODO: move to experiment as static function
 def save_correlations(experiment):
     correlations_filename = get_correlations_filename(experiment.config)
-    file_path = os.path.join(
-        PROJECT_PATH, 'outputs/correlations/{}/{}.csv'.format(experiment.config.lss_survey_name, correlations_filename))
-    error_methods = experiment.covariance_matrices.keys()
+    folder_path = os.path.join(
+        PROJECT_PATH, 'outputs/correlations/{}/{}'.format(experiment.config.lss_survey_name, correlations_filename))
+    file_path = os.path.join(folder_path, '{}.csv'.format(correlations_filename))
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
 
-    df = pd.DataFrame()
+    error_methods = experiment.covariance_matrices.keys()
+    to_save = {}
     for correlation_symbol in experiment.correlation_symbols:
-        df['l'] = experiment.binnings[correlation_symbol].get_effective_ells()
-        df['Cl_{}'.format(correlation_symbol)] = experiment.data_correlations[correlation_symbol]
-        df['nl_{}'.format(correlation_symbol)] = experiment.noise_decoupled[correlation_symbol]
-        df['nl_{}_mean'.format(correlation_symbol)] = experiment.noise_curves[correlation_symbol]
+        to_save['l_{}'.format(correlation_symbol)] = list(experiment.binnings[correlation_symbol].get_effective_ells())
+        to_save['Cl_{}'.format(correlation_symbol)] = list(experiment.data_correlations[correlation_symbol])
+        nl = experiment.noise_decoupled[correlation_symbol]
+        to_save['nl_{}'.format(correlation_symbol)] = list(nl) if type(nl) is np.ndarray else nl
+        to_save['nl_{}_mean'.format(correlation_symbol)] = experiment.noise_curves[correlation_symbol]
 
         for error_method in error_methods:
-            df['error_{}_{}'.format(correlation_symbol, error_method)] = \
-                experiment.errors[error_method][correlation_symbol]
+            to_save['error_{}_{}'.format(correlation_symbol, error_method)] = \
+                list(experiment.errors[error_method][correlation_symbol])
 
         if correlation_symbol == 'gg' and experiment.with_multicomp_noise:
-            df['nl_gg_multicomp'] = experiment.multicomp_noise
+            to_save['nl_gg_multicomp'] = list(experiment.multicomp_noise)
             for error_method in error_methods:
-                df['error_nl_gg_multicomp_{}'.format(error_method)] = experiment.multicomp_noise_err[error_method]
+                to_save['error_nl_gg_multicomp_{}'.format(error_method)] = list(experiment.multicomp_noise_err[error_method])
 
-    df.to_csv(file_path, index=False)
+    # df.to_csv(file_path, index=False)
+    out_file = open(file_path, 'w')
+    json.dump(to_save, out_file, indent=4)
+    out_file.close()
     print('Correlations saved to: {}'.format(file_path))
 
-    folder_path = os.path.join(PROJECT_PATH, 'outputs/correlations/{}/{}_cov'.format(
-        experiment.config.lss_survey_name, correlations_filename, correlations_filename))
+    folder_path = os.path.join(folder_path, '{}_cov'.format(correlations_filename))
     if not os.path.exists(folder_path):
         os.mkdir(folder_path)
     for error_method in error_methods:
@@ -395,23 +398,28 @@ def save_correlations(experiment):
 def read_correlations(filename=None, config=None):
     if config:
         experiment_name = get_correlations_filename(config)
-        filename = '{}/{}'.format(config.lss_survey_name, experiment_name)
+        filename = '{}/{}/{}'.format(config.lss_survey_name, experiment_name, experiment_name)
     file_path = os.path.join(PROJECT_PATH, 'outputs/correlations/{}.csv'.format(filename))
-    correlations = pd.read_csv(file_path)
+    # correlations = pd.read_csv(file_path)
+    with open(file_path) as file:
+        correlations = json.load(file)
+    for key in correlations:
+        if isinstance(correlations[key], list):
+            correlations[key] = np.array(correlations[key])
     return correlations
 
 
 def read_covariances(experiment):
     experiment_name = get_correlations_filename(experiment.config)
-    filename = '{}/{}'.format(experiment.config.lss_survey_name, experiment_name)
-    error_methods = ['gauss', 'jackknife'] if experiment.config.error_method == 'jackknife' else ['gauss']
+    error_methods = ['jackknife'] if experiment.config.error_method == 'jackknife' else ['gauss']
     covariance_matrices = dict([(error_method, {}) for error_method in error_methods])
     for error_method in error_methods:
         for correlation_symbol_a in experiment.correlation_symbols:
             for correlation_symbol_b in experiment.correlation_symbols:
                 covariance_symbol = '{}-{}'.format(correlation_symbol_a, correlation_symbol_b)
-                file_path = os.path.join(PROJECT_PATH, 'outputs/correlations/{}_cov/{}_cov-{}-{}.csv'.format(
-                    filename, experiment_name, covariance_symbol, error_method))
+                file_path = os.path.join(PROJECT_PATH, 'outputs/correlations/{}/{}/{}_cov/{}_cov-{}-{}.csv'.format(
+                    experiment.config.lss_survey_name, experiment_name, experiment_name, experiment_name,
+                    covariance_symbol, error_method))
                 if os.path.exists(file_path):
                     covariance_matrices[error_method][covariance_symbol] = np.loadtxt(file_path, delimiter=',')
     return covariance_matrices
@@ -419,13 +427,13 @@ def read_covariances(experiment):
 
 def get_correlations_filename(config):
     correlation_symbols = list(config.l_range.keys())
-    ells_per_bin = list(config.ells_per_bin.values())[0]
+    ells_per_bin = list(config.ells_per_bin.values())
+    correlations_tag = '_'.join(['{}-{}'.format(correlation_symbols[i], ells_per_bin[i]) for i in range(len(ells_per_bin))])
     if config.lss_survey_name == 'LoTSS_DR2':
         optical_name = 'opt' if config.is_optical else 'srl'
-        correlation_symbols_tag = 'gg-gt' if 'gt' in correlation_symbols else 'gg-gk'
-        experiment_name = '{}_{}__{}__{}mJy_snr={}_nside={}_{}_bin={}'.format(
+        experiment_name = '{}__{}_{}_{}mJy_snr={}__nside={}_{}'.format(
             config.lss_survey_name, optical_name, config.lss_mask_name, config.flux_min_cut, config.signal_to_noise,
-            config.nside, correlation_symbols_tag, ells_per_bin
+            config.nside, correlations_tag
         )
     elif config.lss_survey_name == 'KiDS_QSO':
         correlation_symbols_tag = 'gg-gk'

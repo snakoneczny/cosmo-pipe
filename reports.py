@@ -7,6 +7,7 @@ import warnings
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
+from matplotlib.lines import Line2D
 import seaborn as sns
 from tqdm import tqdm_notebook
 from copy import deepcopy
@@ -14,25 +15,34 @@ import h5py
 from scipy.interpolate import interp1d
 import emcee
 import zeus
+import scipy.stats as stats
+from scipy.optimize import curve_fit
 
-from env_config import PROJECT_PATH
+from env_config import PROJECT_PATH, DATA_PATH
 from experiment import Experiment
 from utils import struct, get_config, decouple_correlation
 from bias import get_sherwin_qso_bias
 
 
-def print_lotss_constraints_table(rows, data_part, bias_models):
+def print_lotss_constraints_table(rows, bias_models=None, with_A_sn_arr=None):
+    bias_models = ['constant', 'scaled', 'quadratic'] if bias_models is None else bias_models
+    with_A_sn_arr = [True] if with_A_sn_arr is None else with_A_sn_arr
+
     df = pd.DataFrame()
-
     for row in rows:
-        correlations = row[0]
-        redshifts = row[1]
-        cosmo_params = row[2]
+        name = row[0]
+        flux_cut = row[1]
+        snr_cut = row[2]
+        correlations = row[3]
+        redshifts = row[4]
+        cosmo_params = row[5]
+        ell_max = row[6]
+        matter_power_spectrum = row[7]
 
+        data_part = '{}mJy_{}SNR'.format(flux_cut, snr_cut)
         for bias_model in bias_models:
-            for with_A_sn in [False, True]:
+            for with_A_sn in with_A_sn_arr:
                 redshift_part = '_'.join(redshifts)
-
                 param_part = 'z_sfg_a_r'
                 if 'tomographer' in redshifts:
                     param_part += '_n'
@@ -47,16 +57,14 @@ def print_lotss_constraints_table(rows, data_part, bias_models):
                     param_part = 'b_a_b_b_' + param_part
                 elif bias_model == 'quadratic':
                     param_part = 'b_0_b_1_b_2_' + param_part
-
                 if cosmo_params is not None and len(cosmo_params) > 0:
                     param_part = '_'.join(cosmo_params) + '_' + param_part
 
-
-                experiment_name = '{}__{}_ell-52-502__redshift_power-law_{}__bias_{}__emcee_{}'.format(
-                    data_part, '-'.join(correlations), redshift_part, bias_model, param_part)
-
+                experiment_name = '{}__{}_ell-52-{}__redshift_power-law_{}__bias_{}__{}__emcee_{}'.format(
+                    data_part, '-'.join(correlations), ell_max, redshift_part, bias_model, matter_power_spectrum, param_part)
                 config, samples, _, _ = get_samples(experiment_name, data_name='LoTSS_DR2', print_stats=False)
-                if config:
+
+                if config and samples is not None:
                     labels = config['to_infere']
 
                     for i, label in enumerate(labels):
@@ -64,15 +72,19 @@ def print_lotss_constraints_table(rows, data_part, bias_models):
                         q = np.diff(mcmc)
 
                         if label in ['b_g', 'b_g_scaled', 'b_a', 'b_b', 'b_0', 'b_1', 'b_2', 'A_sn', 'sigma8']:
-                            row_key = ' + '.join(correlations)
-                            if 'deep-fields' in redshifts:
-                                row_key += ' + DF'
-                            if 'tomographer' in redshifts:
-                                row_key += ' + tomo'
+                            # if name:
+                            row_key = name
                             if with_A_sn:
                                 row_key += ' + A_sn'
-                            if cosmo_params is not None and len(cosmo_params) > 0:
-                                row_key += (' + ' + ' + '.join(cosmo_params))
+                            # else:
+                            #     row_key = ' + '.join(correlations)
+                            #     if 'deep-fields' in redshifts:
+                            #         row_key += ' + DF'
+                            #     if 'tomographer' in redshifts:
+                            #         row_key += ' + tomo'
+                            #     if with_A_sn:
+                            #         row_key += ' + A_sn'
+                            #     row_key += ', ell < {}, {}'.format(ell_max, matter_power_spectrum)
                             col_key = '{} {}'.format(bias_model, label)
 
                             df.loc[row_key, col_key] = '${:.2f}^{{+{:.2f}}}_{{-{:.2f}}}$'.format(mcmc[1], q[1], q[0])
@@ -81,7 +93,8 @@ def print_lotss_constraints_table(rows, data_part, bias_models):
     print(df.to_latex(escape=False, na_rep=''))
 
 
-def compare_biases(experiments, data_name, x_scale='log', x_max=None, y_max=None, add_qsos=False):
+def compare_biases(experiments, data_name, x_scale='log', x_max=None, y_min=None, y_max=None, title=None,
+                   add_qsos=False):
     n_exp = len(experiments)
     alpha = 1.0 / n_exp
 
@@ -130,10 +143,11 @@ def compare_biases(experiments, data_name, x_scale='log', x_max=None, y_max=None
         plt.errorbar(z_arr, b_arr, yerr=b_err, marker='s', color='k', linestyle='', markersize=3,
                      label='Sherwin et al. 2012')
 
+    plt.title(title)
     plt.legend(loc='upper left')
     plt.xlabel('log(1 + z)' if x_scale == 'log' else 'z')
     plt.ylabel('$b_g(z)$')
-    plt.ylim((None, y_max))
+    plt.ylim((y_min, y_max))
     plt.show()
 
 
@@ -169,6 +183,10 @@ def compare_redshifts(experiments, data_name):
 def show_mcmc_report(experiment_name, data_name, quick=False):
     logging.basicConfig(level=os.environ.get('LOGLEVEL', 'ERROR'))
     config, samples, log_prob_samples, tau_arr = get_samples(experiment_name, data_name, print_stats=True)
+
+    # TODO: delete
+    # config['l_range']['gt'] = [2, 36]
+    # config['ells_per_bin']['gt'] = 16
 
     # Tau statistics
     plot_mean_tau(tau_arr)
@@ -211,10 +229,27 @@ def show_mcmc_report(experiment_name, data_name, quick=False):
         #     'b_g_scaled': 'b_g',
         # }
         # pp_labels = [lbl if lbl not in pp_dict else pp_dict[lbl] for lbl in labels]
-        sns.kdeplot(samples[:, labels.index('sigma8')], bw=0.5, label='LoTSS DR2 x CMB')
+        g = sns.kdeplot(samples[:, labels.index('sigma8')], bw=0.5, label='$\\ell < {}$'.format(config['l_range']['gg'][1]))
+
+        # get distplot line points
+        line = g.get_lines()[0]
+        yd = line.get_ydata()
+        max_val = yd.max()
+
+        # Our result at ell < 500 and 1/D(z)
+        # x = np.linspace(0.4, 1.4, 100)
+        # y = stats.norm.pdf(x, 0.86, 0.05)
+        # y *= max_val / y.max()
+        # plt.plot(x, y, label='$\\ell < 500$')
+
+        # Planck results
+        x = np.linspace(0.4, 1.4, 100)
+        y_planck = stats.norm.pdf(x, 0.811, 0.006)
+        y_planck *= max_val / y_planck.max()
+        plt.plot(x, y_planck, label='Planck')
+
         plt.xlabel('$\sigma_8$')
         plt.ylabel('probability')
-        plt.axvline(x=0.811, ymin=0, color='r', label='Planck')
         plt.legend()
         plt.show()
 
@@ -282,13 +317,15 @@ def get_emcee_samples(experiment_name, mcmc_folder_path, config, burnin=None, th
     emcee_sampler = emcee.EnsembleSampler(n_walkers, len(labels), None, backend=backend_reader)
 
     tau = emcee_sampler.get_autocorr_time(tol=0)
-    burnin = int(2 * np.max(tau)) if burnin is None else burnin
-    thin = int(0.5 * np.min(tau)) if thin is None else thin
-    samples = emcee_sampler.get_chain(discard=burnin, flat=True, thin=thin)
-    log_prob_samples = emcee_sampler.get_log_prob(discard=burnin, flat=True, thin=thin)
-    # log_prior_samples = sampler.get_blobs(discard=burnin, flat=True, thin=thin)
-
-    return emcee_sampler, samples, log_prob_samples, tau_arr, burnin, thin
+    if not np.isnan(tau).any():
+        burnin = int(2 * np.max(tau)) if burnin is None else burnin
+        thin = int(0.5 * np.min(tau)) if thin is None else thin
+        samples = emcee_sampler.get_chain(discard=burnin, flat=True, thin=thin)
+        log_prob_samples = emcee_sampler.get_log_prob(discard=burnin, flat=True, thin=thin)
+        # log_prior_samples = sampler.get_blobs(discard=burnin, flat=True, thin=thin)
+        return emcee_sampler, samples, log_prob_samples, tau_arr, burnin, thin
+    else:
+        return None, None, None, None, None, None
 
 
 def make_sigmas_report(config, best_fit_params):
@@ -310,11 +347,19 @@ def make_param_plots(config, arg_names, samples):
     experiment = Experiment(config, set_data=True, set_maps=True)
     experiment.set_correlations()
 
+    # TODO: move
+    # Covariance matrices
+    # for correlation_symbol in experiment.correlation_symbols:
+    #     plt.matshow(experiment.covariance_matrices['{}-{}'.format(correlation_symbol, correlation_symbol)])
+    #     plt.title(correlation_symbol)
+    #     plt.show()
+
     # Iterate samples
     redshift_functions_store = defaultdict(list)
     correlations_store = dict([(correlation_symbol, []) for correlation_symbol in experiment.correlation_symbols])
     bias_arr_store = []
-    inds = np.random.randint(len(samples), size=100)
+    n_samples = 100
+    inds = np.random.randint(len(samples), size=n_samples)
     for ind in tqdm_notebook(inds):
         # Update data params
         sample = samples[ind]
@@ -331,7 +376,7 @@ def make_param_plots(config, arg_names, samples):
             correlations_dict[correlation_symbol] = decouple_correlation(experiment.workspaces[correlation_symbol],
                                                                          correlations_dict[correlation_symbol])
             if correlation_symbol == 'gg' and 'A_sn' in arg_names:
-                correlations_dict[correlation_symbol] += (config.A_sn - 1) * experiment.noise_decoupled['gg']
+                correlations_dict[correlation_symbol] += (config.A_sn - 1) * experiment.noise_decoupled['gg'][0]
 
         # Store it
         for correlation_symbol in correlations_dict:
@@ -356,30 +401,35 @@ def make_param_plots(config, arg_names, samples):
 
         # Theory
         ell_arr = experiment.binnings[correlation_symbol].get_effective_ells()
-        ell_dense = np.arange(ell_arr[0], ell_arr[-1], 1)
+        # ell_dense = np.arange(ell_arr[0], ell_arr[-1], 1)
         for correlation in correlations_store[correlation_symbol]:
-            f = interp1d(ell_arr, correlation, kind='cubic')
-            correlation_interpolated = f(ell_dense)
-            plt.plot(ell_dense, correlation_interpolated, 'C1', alpha=0.02)
+            plt.plot(ell_arr, correlation, 'C1', alpha=2.0/n_samples)
+            # f = interp1d(ell_arr, correlation, kind='linear')
+            # correlation_interpolated = f(ell_dense)
+            # plt.plot(ell_dense, correlation_interpolated, 'C1', alpha=0.02)
+
 
         # Data
         noise = experiment.noise_decoupled[correlation_symbol]
         correlation_dict = experiment.data_correlations
         data_to_plot = correlation_dict[correlation_symbol] - noise
         y_err = experiment.errors[experiment.config.error_method][correlation_symbol]
-        plt.errorbar(ell_arr, data_to_plot, yerr=y_err, fmt='ob', label='data', markersize=2)
+        plt.errorbar(ell_arr, data_to_plot, yerr=y_err, fmt='oC0', label='data', markersize=2)
         if correlation_symbol == 'gg':
             plt.plot(ell_arr, noise, color='grey', marker='o', label='noise', markersize=2)
         # ell range lines
         l_range = experiment.config.l_range[correlation_symbol]
-        plt.axvline(l_range[0], label='ell range', color='green')
-        plt.axvline(l_range[1], color='green')
+        plt.axvline(l_range[0], color='C2', linestyle='--')
+        plt.axvline(l_range[1], color='C2', linestyle='--')
 
         # TODO: different limits for C_qq and C_gg
         if correlation_symbol == 'gg':
-            plt.ylim(ymin=1e-8, ymax=1e-3)
+            plt.ylim(ymin=5*1e-8, ymax=6*1e-5)
         elif correlation_symbol == 'gk':
-            plt.ylim(ymin=1e-9, ymax=1e-6)
+            plt.ylim(ymin=1e-9, ymax=2*1e-6)
+        elif correlation_symbol == 'gt':
+            plt.ylim(ymin=1e-12, ymax=1e-7)
+            plt.xlim(xmax=config.l_range['gt'][1] * 3)
 
         rename_dict = {'g': 'q'} if experiment.config.lss_survey_name == 'KiDS_QSO' else None
         if rename_dict:
@@ -390,7 +440,13 @@ def make_param_plots(config, arg_names, samples):
         plt.yscale('log')
         plt.xlabel('$\\ell$', fontsize=16)
         plt.ylabel('$C_\\ell^{{{}}}$'.format(correlation_symbol), fontsize=16)
-        plt.legend(loc='upper right', ncol=2, labelspacing=0.005)
+
+        handles, labels = plt.gca().get_legend_handles_labels()
+        line = Line2D([0], [0], label='samples', color='C1')
+        vertical_line = Line2D([], [], color='C2', marker='|', linestyle='None', label='$\\ell$ range')
+        handles.extend([line, vertical_line])
+        plt.legend(loc='upper right', ncol=2, labelspacing=0.005, handles=handles)
+
         plt.grid()
         plt.show()
 
@@ -399,13 +455,22 @@ def make_param_plots(config, arg_names, samples):
         plt.figure()
 
         for n_arr in redshift_function_arr:
-            plt.plot(z_arr, n_arr, 'C1', alpha=0.02)
+            plt.plot(z_arr, n_arr, 'C1', alpha=2.0/n_samples)
 
-        plt.errorbar(experiment.dz_to_fit[i], experiment.dn_dz_to_fit[i], experiment.dn_dz_err_to_fit[i], fmt='b.',
-                     label=redshift_to_fit)
+        # plt.errorbar(experiment.dz_to_fit[i], experiment.dn_dz_to_fit[i], experiment.dn_dz_err_to_fit[i], fmt='C0.',
+        #              label=redshift_to_fit)
+        label = 'deep fields' if redshift_to_fit == 'deep_fields' else redshift_to_fit
+        plt.plot(experiment.dz_to_fit[i], experiment.dn_dz_to_fit[i], label=label)
+        arr_min = experiment.dn_dz_to_fit[i] - experiment.dn_dz_err_to_fit[i]
+        arr_max = experiment.dn_dz_to_fit[i] + experiment.dn_dz_err_to_fit[i]
+        plt.fill_between(experiment.dz_to_fit[i], arr_min, arr_max, alpha=0.4)
         plt.axhline(y=0, color='gray', linestyle='-')
 
-        plt.legend()
+        handles, labels = plt.gca().get_legend_handles_labels()
+        line = Line2D([0], [0], label='samples', color='C1')
+        handles.extend([line])
+        plt.legend(handles=handles)
+
         plt.xlabel('z')
         if redshift_to_fit == 'tomographer':
             plt.ylabel('b * dN/dz')
@@ -416,10 +481,58 @@ def make_param_plots(config, arg_names, samples):
     # Plot bias
     plt.figure()
     for bias_arr in bias_arr_store:
-        plt.plot(z_arr, bias_arr, 'C1', alpha=0.02)
+        plt.plot(z_arr, bias_arr, 'C1', alpha=2.0/n_samples)
         plt.xlabel('z')
         plt.ylabel('b')
+
+    handles, labels = plt.gca().get_legend_handles_labels()
+    line = Line2D([0], [0], label='samples', color='C1')
+    handles.extend([line])
+    plt.legend(handles=handles)
     plt.show()
+
+    # Plot b * dN/dz with tomographer
+    filename = os.path.join(DATA_PATH, 'LoTSS/DR2/tomographer/{}mJy_{}SNR_srl_catalog_inner.csv'.format(
+        config.flux_min_cut, config.signal_to_noise))
+    if os.path.exists(filename):
+        tomographer = pd.read_csv(filename)
+
+        # Find mean and one sigma regions
+        redshift_function_arr = redshift_functions_store['deep_fields']
+        b_n_arr_store = []
+        for i in range(len(redshift_function_arr)):
+            n_arr = redshift_function_arr[i]
+            bias_arr = bias_arr_store[i]
+            b_n_arr_store.append(n_arr * bias_arr)
+        b_n_arr_store = np.array(b_n_arr_store)
+
+        bias_arr_mean, bias_arr_min, bias_arr_max = [], [], []
+        for i in range(len(z_arr)):
+            min, mean, max = np.percentile(b_n_arr_store[:, i], [16, 50, 84])
+            bias_arr_mean.append(mean)
+            bias_arr_min.append(min)
+            bias_arr_max.append(max)
+
+        # Fit amplitude to tomographer
+        f = interp1d(z_arr, bias_arr_mean, kind='cubic')
+        def tmp_func(x, a):
+            return a * f(x)
+        p0 = [10000]
+        popt, pcov = curve_fit(tmp_func, tomographer['z'], tomographer['dNdz_b'], sigma=tomographer['dNdz_b_err'], p0=p0)
+
+        # Plot
+        plt.errorbar(tomographer['z'], tomographer['dNdz_b'], tomographer['dNdz_b_err'], fmt='C0.', label='Tomographer')
+
+        a = popt[0]
+        plt.plot(z_arr, np.multiply(bias_arr_mean, a), 'C1', label='LoTSS DR2 x CMB')
+        plt.fill_between(z_arr, np.multiply(bias_arr_min, a), np.multiply(bias_arr_max, a), color='C1', alpha=0.2)
+
+        plt.axhline(y=0, color='gray', linestyle='-')
+
+        plt.legend()
+        plt.xlabel('z')
+        plt.ylabel('$b \cdot dN/dz$')
+        plt.show()
 
 
 def plot_mean_tau(autocorr_time_arr):

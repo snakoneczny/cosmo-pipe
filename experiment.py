@@ -158,7 +158,7 @@ class Experiment:
             return -np.inf
 
         # Check the bias prior if present
-        if self.config.bias_model == 'quadratic':
+        if self.config.bias_model in ['quadratic_limited', 'quadratic']:
             bias_arr = self.get_bias(z_arr, self.cosmology, config)
             if (bias_arr <= 0).any():
                 return -np.inf
@@ -205,10 +205,10 @@ class Experiment:
             'b_g': (0, np.inf),
             'b_g_scaled': (0, np.inf),
             'b_0': (-np.inf, np.inf),
-            'b_1': (-np.inf, np.inf),
+            'b_1': (0, np.inf),
             'b_2': (-np.inf, np.inf),
             'b_a': (0, np.inf),
-            'b_b': (0, np.inf),
+            'b_b': (-np.inf, np.inf),
             'z_sfg': (0, np.inf),
             'r': (0, np.inf),
             'r_2': (0.001, 1.0),
@@ -320,9 +320,10 @@ class Experiment:
         if self.config.read_covariance_flag:
             self.covariance_matrices = read_covariances(self)
         else:
-            self.set_gauss_covariance()
             if self.config.error_method == 'jackknife':
                 self.set_jackknife_covariance()
+            else:
+                self.set_gauss_covariance()
 
         self.set_errors()
 
@@ -379,7 +380,7 @@ class Experiment:
 
             # TODO: use get redshift function
             elif redshift_to_fit == 'deep_fields':
-                deepfields_file = 'LoTSS/DR2/pz_deepfields/AllFields_Pz_dat_Fllim1_{:.1f}_Fllim2_0.0.fits'.format(
+                deepfields_file = 'LoTSS/DR2/pz_deepfields/AllFields_Pz_dat_Fllim1_1.5_Fllim2_0.0_Final_Trapz_CH_Pz.fits'.format(
                     self.config.flux_min_cut)
                 pz_deepfields = read_fits_to_pandas(os.path.join(DATA_PATH, deepfields_file))
 
@@ -551,11 +552,11 @@ class Experiment:
 
     def read_data_correlations(self):
         correlations_df = read_correlations(config=self.config)
-        error_methods = ['gauss', 'jackknife'] if self.config.error_method == 'jackknife' else ['gauss']
+        error_methods = ['jackknife'] if self.config.error_method == 'jackknife' else ['gauss']
         for correlation_symbol in self.correlation_symbols:
             self.data_correlations[correlation_symbol] = correlations_df['Cl_{}'.format(correlation_symbol)]
             self.noise_decoupled[correlation_symbol] = correlations_df['nl_{}'.format(correlation_symbol)]
-            self.noise_curves[correlation_symbol] = correlations_df['nl_{}_mean'.format(correlation_symbol)][0]
+            self.noise_curves[correlation_symbol] = correlations_df['nl_{}_mean'.format(correlation_symbol)]
             for error_method in error_methods:
                 self.errors[error_method][correlation_symbol] = \
                     correlations_df['error_{}_{}'.format(correlation_symbol, error_method)]
@@ -571,12 +572,13 @@ class Experiment:
                              self.noise_curves, self.noise_decoupled)
 
         # Scale auto-correlations for LoTSS DR2 non-optical data
-        self.with_multicomp_noise = (
-                self.config.lss_survey_name == 'LoTSS_DR2'
-                and not self.config.is_optical
-                and not self.config.lss_mask_name == 'mask_optical'
-                and 'gg' in self.correlation_symbols
-        )
+        self.with_multicomp_noise = False
+        # self.with_multicomp_noise = (
+        #         self.config.lss_survey_name == 'LoTSS_DR2'
+        #         and not self.config.is_optical
+        #         and not self.config.lss_mask_name == 'mask_optical'
+        #         and 'gg' in self.correlation_symbols
+        # )
         if self.with_multicomp_noise:
             config_tmp = deepcopy(self.config)
             config_tmp.lss_mask_name = 'mask_optical'
@@ -786,7 +788,7 @@ class Experiment:
         # Get cosmology params
         with open(os.path.join(PROJECT_PATH, 'cosmologies.yml'), 'r') as cosmology_file:
             self.cosmology_params = yaml.full_load(cosmology_file)[self.config.cosmology_name]
-        self.cosmology_params['matter_power_spectrum'] = self.config.cosmology_matter_power_spectrum
+        self.cosmology_params['matter_power_spectrum'] = self.config.matter_power_spectrum
 
         # TODO: iterate through self.cosmology_params, if present in self.config then change, remove cosmo params update
         if getattr(self.config, 'sigma8', None):
@@ -819,7 +821,7 @@ class Experiment:
 
         l_range = list(self.config.l_range.values())[0]
         correlations_part = '_'.join([
-            '-'.join(self.correlation_symbols),
+            '-'.join(self.config.correlations_to_use),
             'ell-{}-{}'.format(l_range[0], l_range[1]),
         ])
 
@@ -828,8 +830,9 @@ class Experiment:
             redshift_part += '_' + '-'.join(redshift_to_fit.split('_'))
 
         bias_part = 'bias_' + self.config.bias_model
+        cosmology_part = self.config.matter_power_spectrum
         mcmc_part = self.config.mcmc_engine + '_' + '_'.join(self.arg_names)
-        experiment_name_parts = [data_part, correlations_part, redshift_part, bias_part, mcmc_part]
+        experiment_name_parts = [data_part, correlations_part, redshift_part, bias_part, cosmology_part, mcmc_part]
 
         if hasattr(self.config, 'experiment_tag') and self.config.experiment_tag is not None and len(
                 self.config.experiment_tag) > 0:

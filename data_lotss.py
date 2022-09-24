@@ -18,6 +18,7 @@ LOTSS_JACKKNIFE_REGIONS = [
     {'lon': (37, -25, 5), 'lat': (19, 40, 2)},
 ]
 
+
 # TODO: refactor, shorten, split into more functions (?)
 def get_redshift_distributions(data_optical, data_skads):
     # Tomographer
@@ -152,8 +153,8 @@ def get_lotss_redshift_distribution(config=None, model='power_law', z_sfg=None, 
         A_z_tail = getattr(config, 'A_z_tail', None)
 
     if model == 'deep_fields':
-        # deepfields_file = 'LoTSS/DR2/pz_deepfields/Pz_booterrors_wsum_deepfields_{:.1f}mJy.fits'.format(flux_cut)
-        deepfields_file = 'LoTSS/DR2/pz_deepfields/AllFields_Pz_dat_Fllim1_{:.1f}_Fllim2_0.0.fits'.format(flux_cut)
+        deepfields_file = 'LoTSS/DR2/pz_deepfields/AllFields_Pz_dat_Fllim1_1.5_Fllim2_0.0_Final_Trapz_CH_Pz.fits'.format(
+            flux_cut)
         pz_deepfields = read_fits_to_pandas(os.path.join(DATA_PATH, deepfields_file))
 
         # z_arr = pz_deepfields['zbins']
@@ -217,7 +218,8 @@ def read_lotss_noise_weight_map(nside, data_release, flux_min_cut, signal_to_noi
 
     folder = 'LoTSS/DR{}/weight_maps_randoms'
     file_path_in = os.path.join(DATA_PATH, folder, 'Randoms_input_Nside_{}_Fl_{:.1f}mJy.fits')
-    file_path_out = os.path.join(DATA_PATH, folder, 'Randoms_output_Nside_{}_SNR_{:.1f}_Fl_{:.1f}mJy_withFluxShift.fits')
+    file_path_out = os.path.join(DATA_PATH, folder,
+                                 'Randoms_output_Nside_{}_SNR_{:.1f}_Fl_{:.1f}mJy_withFluxShift.fits')
 
     file_path_in = file_path_in.format(data_release, nside, flux_min_cut)
     file_path_out = file_path_out.format(data_release, nside, signal_to_noise, flux_min_cut)
