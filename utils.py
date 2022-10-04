@@ -430,9 +430,10 @@ def get_correlations_filename(config):
     ells_per_bin = list(config.ells_per_bin.values())
     correlations_tag = '_'.join(['{}-{}'.format(correlation_symbols[i], ells_per_bin[i]) for i in range(len(ells_per_bin))])
     if config.lss_survey_name == 'LoTSS_DR2':
-        optical_name = 'opt' if config.is_optical else 'srl'
+        data_type_name = 'opt' if config.is_optical else 'srl'
+        data_type_name = 'mock' if config.is_mock else data_type_name
         experiment_name = '{}__{}_{}_{}mJy_snr={}__nside={}_{}'.format(
-            config.lss_survey_name, optical_name, config.lss_mask_name, config.flux_min_cut, config.signal_to_noise,
+            config.lss_survey_name, data_type_name, config.lss_mask_name, config.flux_min_cut, config.signal_to_noise,
             config.nside, correlations_tag
         )
     elif config.lss_survey_name == 'KiDS_QSO':

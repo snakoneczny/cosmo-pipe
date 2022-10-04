@@ -153,7 +153,7 @@ def get_lotss_redshift_distribution(config=None, model='power_law', z_sfg=None, 
         A_z_tail = getattr(config, 'A_z_tail', None)
 
     if model == 'deep_fields':
-        deepfields_file = 'LoTSS/DR2/pz_deepfields/AllFields_Pz_dat_Fllim1_1.5_Fllim2_0.0_Final_Trapz_CH_Pz.fits'.format(
+        deepfields_file = 'LoTSS/DR2/pz_deepfields/AllFields_Pz_dat_Fllim1_{}_Fllim2_0.0_Final_Trapz_CH_Pz.fits'.format(
             flux_cut)
         pz_deepfields = read_fits_to_pandas(os.path.join(DATA_PATH, deepfields_file))
 
@@ -473,35 +473,40 @@ def get_lotss_dr1_mask(nside):
     return mask
 
 
-def get_lotss_data(data_release, flux_min_cut=2, signal_to_noise=None, optical=True, columns=None):
-    if data_release == 1:
-        filename = 'LOFAR_HBA_T1_DR1_merge_ID_optical_f_v1.2b_restframe.fits' if optical else \
-            'LOFAR_HBA_T1_DR1_catalog_v1.0.srl.fits'
-    elif data_release == 2:
-        filename = 'combined-release-v0.1.fits' if optical else 'LoTSS_DR2_v100.srl.fits'
-    data_path = os.path.join(DATA_PATH, 'LoTSS/DR{}'.format(data_release), filename)
+def get_lotss_data(data_release, flux_min_cut=2, signal_to_noise=None, optical=True, is_mock=False, columns=None):
+    if is_mock:
+        data = pd.read_csv(os.path.join(DATA_PATH, 'LoTSS/DR2/mocks/mock_flask_deepfields/cat_NonLinear.dat'), sep=' ',
+                           header=None, names=['RA', 'DEC'])
 
-    data = read_fits_to_pandas(data_path)
-    print('Original LoTSS DR{} datashape: {}'.format(data_release, data.shape))
+    else:
+        if data_release == 1:
+            filename = 'LOFAR_HBA_T1_DR1_merge_ID_optical_f_v1.2b_restframe.fits' if optical else \
+                'LOFAR_HBA_T1_DR1_catalog_v1.0.srl.fits'
+        elif data_release == 2:
+            filename = 'combined-release-v0.1.fits' if optical else 'LoTSS_DR2_v110_masked.srl.fits'
+        data_path = os.path.join(DATA_PATH, 'LoTSS/DR{}'.format(data_release), filename)
 
-    # Flux cut
-    if flux_min_cut:
-        data = data.loc[data['Total_flux'] > flux_min_cut]
-        print('Total flux of S > {} mJy: {}'.format(flux_min_cut, data.shape))
+        data = read_fits_to_pandas(data_path)
+        print('Original LoTSS DR{} datashape: {}'.format(data_release, data.shape))
 
-    # Signal to noise ratio cut
-    if signal_to_noise:
-        data = data.loc[data['Total_flux'] / data['E_Total_flux'] > signal_to_noise]
-        print('Signal to noise > {}: {}'.format(signal_to_noise, data.shape))
+        # Flux cut
+        if flux_min_cut:
+            data = data.loc[data['Total_flux'] > flux_min_cut]
+            print('Total flux of S > {} mJy: {}'.format(flux_min_cut, data.shape))
 
-    # TODO: delete or permanently add to code
-    # Patches
-    # data = data.loc[(data['RA'] > 100) & (data['RA'] < 300)]
-    # print('Big patch: {}'.format(data.shape))
-    # data = data.loc[(data['RA'] < 100) | (data['RA'] > 300)]
-    # print('Small patch: {}'.format(data.shape))
+        # Signal to noise ratio cut
+        if signal_to_noise:
+            data = data.loc[data['Total_flux'] / data['E_Total_flux'] > signal_to_noise]
+            print('Signal to noise > {}: {}'.format(signal_to_noise, data.shape))
 
-    if columns is not None:
-        data = data[columns]
+        # TODO: delete or permanently add to code
+        # Patches
+        # data = data.loc[(data['RA'] > 100) & (data['RA'] < 300)]
+        # print('Big patch: {}'.format(data.shape))
+        # data = data.loc[(data['RA'] < 100) | (data['RA'] > 300)]
+        # print('Small patch: {}'.format(data.shape))
+
+        if columns is not None:
+            data = data[columns]
 
     return data

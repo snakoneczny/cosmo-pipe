@@ -3,6 +3,7 @@ LoTSS_DR2:
   # Data
   lss_survey_name: LoTSS_DR2
   is_optical: False
+  is_mock: False
 
   # Maps
   lss_mask_name: mask_inner  # mask_inner, mask_optical
@@ -12,12 +13,12 @@ LoTSS_DR2:
   signal_to_noise: 5.0  # 5.0, 7.5
 
   # Correlations
-  read_correlations_flag: True
+  read_correlations_flag: False
   read_covariance_flag: True
   error_method: jackknife  # jackknife, gauss
   l_range: {
-    gg: [52, 502],  # 252, 502, 802
-    gk: [52, 502],  # 252, 502, 802
+    gg: [52, 202],  # 252, 502, 802
+    gk: [52, 202],  # 252, 502, 802
     gt: [2, 34],
   }
   ells_per_bin: {

@@ -24,7 +24,34 @@ from utils import struct, get_config, decouple_correlation
 from bias import get_sherwin_qso_bias
 
 
-def print_lotss_constraints_table(rows, bias_models=None, with_A_sn_arr=None):
+def plot_sigma8(experiments, data_name):
+    logging.basicConfig(level=os.environ.get('LOGLEVEL', 'ERROR'))
+
+    max_val = 0
+    for experiment_label, experiment_name in experiments:
+        config, samples, log_prob_samples, tau_arr = get_samples(experiment_name, data_name, print_stats=False)
+        labels = config['to_infere']
+
+        g = sns.kdeplot(samples[:, labels.index('sigma8')], bw=0.5, label=experiment_label)
+
+        # get distplot line points
+        line = g.get_lines()[-1]
+        yd = line.get_ydata()
+        max_val = max(max_val, yd.max())
+
+    # Planck results
+    x = np.linspace(0.4, 1.4, 100)
+    y_planck = stats.norm.pdf(x, 0.811, 0.006)
+    y_planck *= max_val / y_planck.max()
+    plt.plot(x, y_planck, label='Planck')
+
+    plt.xlabel('$\sigma_8$')
+    plt.ylabel('probability')
+    plt.legend()
+    plt.show()
+
+
+def print_lotss_constraints_table(rows, bias_models=None, with_A_sn_arr=None, tag=None):
     bias_models = ['constant', 'scaled', 'quadratic'] if bias_models is None else bias_models
     with_A_sn_arr = [True] if with_A_sn_arr is None else with_A_sn_arr
 
@@ -42,28 +69,31 @@ def print_lotss_constraints_table(rows, bias_models=None, with_A_sn_arr=None):
         data_part = '{}mJy_{}SNR'.format(flux_cut, snr_cut)
         for bias_model in bias_models:
             for with_A_sn in with_A_sn_arr:
-                redshift_part = '_'.join(redshifts)
-                param_part = 'z_sfg_a_r'
-                if 'tomographer' in redshifts:
-                    param_part += '_n'
-                if with_A_sn:
-                    param_part = 'A_sn_' + param_part
-
+                redshift_part = 'power-law_' + '_'.join(redshifts) if len(redshifts) > 0 else 'deep-fields'
+                param_part = ''
                 if bias_model == 'constant':
-                    param_part = 'b_g_' + param_part
+                    param_part = 'b_g'
                 elif bias_model == 'scaled':
-                    param_part = 'b_g_scaled_' + param_part
+                    param_part = 'b_g_scaled'
                 elif bias_model == 'quadratic_limited':
-                    param_part = 'b_a_b_b_' + param_part
+                    param_part = 'b_a_b_b'
                 elif bias_model == 'quadratic':
-                    param_part = 'b_0_b_1_b_2_' + param_part
+                    param_part = 'b_0_b_1_b_2'
                 if cosmo_params is not None and len(cosmo_params) > 0:
-                    param_part = '_'.join(cosmo_params) + '_' + param_part
+                    param_part = '_'.join(['_'.join(cosmo_params), param_part])
+                if with_A_sn:
+                    param_part = '_'.join([param_part, 'A_sn'])
+                if len(redshifts) > 0:
+                    param_part = '_'.join([param_part, 'z_sfg_a_r'])
+                if 'tomographer' in redshifts:
+                    param_part = '_'.join([param_part, 'n'])
 
-                experiment_name = '{}__{}_ell-52-{}__redshift_power-law_{}__bias_{}__{}__emcee_{}'.format(
+                experiment_name = '{}__{}_ell-52-{}__redshift_{}__bias_{}__{}__emcee_{}'.format(
                     data_part, '-'.join(correlations), ell_max, redshift_part, bias_model, matter_power_spectrum, param_part)
-                config, samples, _, _ = get_samples(experiment_name, data_name='LoTSS_DR2', print_stats=False)
+                if tag:
+                    experiment_name = '__'.join([experiment_name, tag])
 
+                config, samples, _, _ = get_samples(experiment_name, data_name='LoTSS_DR2', print_stats=False)
                 if config and samples is not None:
                     labels = config['to_infere']
 
@@ -188,9 +218,6 @@ def show_mcmc_report(experiment_name, data_name, quick=False):
     # config['l_range']['gt'] = [2, 36]
     # config['ells_per_bin']['gt'] = 16
 
-    # Tau statistics
-    plot_mean_tau(tau_arr)
-
     # Final estimate
     best_fit_params = {}
     labels = config['to_infere']
@@ -201,6 +228,10 @@ def show_mcmc_report(experiment_name, data_name, quick=False):
         q = np.diff(mcmc)
         print('{} = {:.2f} (+{:.2f}, -{:.2f})'.format(labels[i], mcmc[1], q[1], q[0]))
     print('------------------------------')
+
+
+    # Tau statistics
+    plot_mean_tau(tau_arr)
 
     # Sigmas and chi-squared
     make_sigmas_report(config, best_fit_params)
@@ -223,24 +254,12 @@ def show_mcmc_report(experiment_name, data_name, quick=False):
             plt.show()
 
     if 'sigma8' in labels:
-        # pp_dict = {
-        #     'Omega_m': '\Omega_m',
-        #     'sigma8': '\sigma_8',
-        #     'b_g_scaled': 'b_g',
-        # }
-        # pp_labels = [lbl if lbl not in pp_dict else pp_dict[lbl] for lbl in labels]
-        g = sns.kdeplot(samples[:, labels.index('sigma8')], bw=0.5, label='$\\ell < {}$'.format(config['l_range']['gg'][1]))
+        g = sns.kdeplot(samples[:, labels.index('sigma8')], bw=0.5, label=config.lss_survey_name)
 
         # get distplot line points
         line = g.get_lines()[0]
         yd = line.get_ydata()
         max_val = yd.max()
-
-        # Our result at ell < 500 and 1/D(z)
-        # x = np.linspace(0.4, 1.4, 100)
-        # y = stats.norm.pdf(x, 0.86, 0.05)
-        # y *= max_val / y.max()
-        # plt.plot(x, y, label='$\\ell < 500$')
 
         # Planck results
         x = np.linspace(0.4, 1.4, 100)

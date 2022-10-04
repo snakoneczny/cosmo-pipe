@@ -380,7 +380,7 @@ class Experiment:
 
             # TODO: use get redshift function
             elif redshift_to_fit == 'deep_fields':
-                deepfields_file = 'LoTSS/DR2/pz_deepfields/AllFields_Pz_dat_Fllim1_1.5_Fllim2_0.0_Final_Trapz_CH_Pz.fits'.format(
+                deepfields_file = 'LoTSS/DR2/pz_deepfields/AllFields_Pz_dat_Fllim1_{}_Fllim2_0.0_Final_Trapz_CH_Pz.fits'.format(
                     self.config.flux_min_cut)
                 pz_deepfields = read_fits_to_pandas(os.path.join(DATA_PATH, deepfields_file))
 
@@ -728,6 +728,7 @@ class Experiment:
         if 'g' in self.map_symbols:
             # First stage of setting galaxy maps
             self.base_maps['g'], self.masks['g'], self.weight_maps['g'] = self.get_galaxy_map_function()
+            self.weight_maps['g'] = None if self.config.is_mock else self.weight_maps['g']
 
             # Second stage of setting galaxy maps
             self.base_maps['g'], self.masks['g'], self.weight_maps['g'], self.processed_maps['g'], self.noise_curves[
@@ -768,11 +769,12 @@ class Experiment:
         logger.info('Setting data..')
         if self.config.lss_survey_name == 'LoTSS_DR2':
             self.data['g'] = get_lotss_data(data_release=2, flux_min_cut=self.config.flux_min_cut,
-                                            signal_to_noise=self.config.signal_to_noise, optical=self.config.is_optical)
+                                            signal_to_noise=self.config.signal_to_noise, optical=self.config.is_optical,
+                                            is_mock=self.config.is_mock)
         elif self.config.lss_survey_name == 'LoTSS_DR1':
             self.data['g'] = get_lotss_data(data_release=1, flux_min_cut=self.config.flux_min_cut,
                                             signal_to_noise=self.config.signal_to_noise,
-                                            optical=self.config.is_optical)
+                                            is_mock=self.config.is_mock, optical=self.config.is_optical)
         elif self.config.lss_survey_name == 'KiDS_QSO':
             self.data['g'] = get_kids_qsos(r_max=self.config.r_max, qso_min_proba=self.config.qso_min_proba)
             # self.data['s'] = get_gaia_stars()
@@ -816,6 +818,7 @@ class Experiment:
         data_part = None
         if self.config.lss_survey_name == 'LoTSS_DR2':
             data_part = '{}mJy_{}SNR'.format(self.config.flux_min_cut, self.config.signal_to_noise)
+            data_part = 'mock_' + data_part if self.config.is_mock else data_part
         elif self.config.lss_survey_name == 'KiDS_QSO':
             data_part = 'r-max-{}'.format(self.config.r_max)
 

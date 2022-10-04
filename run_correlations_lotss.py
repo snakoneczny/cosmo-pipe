@@ -24,26 +24,14 @@ for flux_min_cut in [1.5]:
         config.flux_min_cut = flux_min_cut
         config.signal_to_noise = signal_to_noise
 
-        # VAC in optical field
-        # config.is_optical = True
-        # config.lss_mask_name = 'mask_optical'
-        #
-        # experiment = Experiment(config, set_data=True, set_maps=True)
-        # experiment.set_correlations()
-        # save_correlations(experiment)
-
-        # Radio in optical field
-        # config.is_optical = False
-        # config.lss_mask_name = 'mask_optical'
-        #
-        # experiment = Experiment(config, set_data=True, set_maps=True)
-        # experiment.set_correlations()
-        # save_correlations(experiment)
-
         # Radio in inner mask
-        config.is_optical = False
-        config.lss_mask_name = 'mask_inner'
-
         experiment = Experiment(config, set_data=True, set_maps=True)
         experiment.set_correlations()
         save_correlations(experiment)
+
+        # Mock
+        if flux_min_cut == 1.5 and signal_to_noise == 7.5:
+            config.is_mock = True
+            experiment = Experiment(config, set_data=True, set_maps=True)
+            experiment.set_correlations()
+            save_correlations(experiment)
