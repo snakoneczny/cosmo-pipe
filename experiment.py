@@ -14,6 +14,7 @@ import json
 import yaml
 from tqdm import tqdm
 from scipy.interpolate import interp1d
+from scipy import signal
 
 from env_config import PROJECT_PATH, DATA_PATH
 from utils import logger, process_to_overdensity_map, get_pairs, get_correlation_matrix, get_redshift_distribution, \
@@ -209,6 +210,13 @@ class Experiment:
             'b_2': (-np.inf, np.inf),
             'b_a': (0, np.inf),
             'b_b': (-np.inf, np.inf),
+            'z_0': (0, np.inf),
+            'gamma': (-np.inf, np.inf),
+            'z_tail': (-np.inf, np.inf),
+            'A': (-np.inf, np.inf),
+            'B': (-np.inf, np.inf),
+            'C': (0, np.inf),
+            'A_z': (0, np.inf),
             'z_sfg': (0, np.inf),
             'r': (0, np.inf),
             'r_2': (0.001, 1.0),
@@ -380,14 +388,23 @@ class Experiment:
 
             # TODO: use get redshift function
             elif redshift_to_fit == 'deep_fields':
-                deepfields_file = 'LoTSS/DR2/pz_deepfields/AllFields_Pz_dat_Fllim1_{}_Fllim2_0.0_Final_Trapz_CH_Pz.fits'.format(
+                deepfields_file = 'LoTSS/DR2/pz_deepfields/AllFields_Pz_dat_Fllim1_{}_Final_Trapz_Pz.fits'.format(
                     self.config.flux_min_cut)
                 pz_deepfields = read_fits_to_pandas(os.path.join(DATA_PATH, deepfields_file))
 
                 idx = pz_deepfields['z'] < 6
                 self.dz_to_fit.append(pz_deepfields['z'][idx])
-                self.dn_dz_to_fit.append(pz_deepfields['Nz_weighted_fields'][idx])
-                self.dn_dz_err_to_fit.append(pz_deepfields['Nz_fields_err_combafter'][idx])
+                self.dn_dz_to_fit.append(pz_deepfields['Nz_weighted_fields_Photoz_only'][idx])
+                self.dn_dz_err_to_fit.append(pz_deepfields['Nz_fields_err_combafter_Photoz_only'][idx])
+
+                # Smoothing
+                # self.dn_dz_to_fit = signal.savgol_filter(self.dn_dz_to_fit, 101, 5)  # window size, polynomial order
+                # self.dn_dz_err_to_fit = signal.savgol_filter(self.dn_dz_err_to_fit, 201, 1)
+
+                # idx_low = z_arr < 1.1
+                # idx_high = z_arr > 1.1
+                # n_arr[idx_low] = n_arr[idx_low] + err_arr[idx_low]
+                # n_arr[idx_high] = n_arr[idx_high] - err_arr[idx_high]
 
             total_length += len(self.dz_to_fit[-1])
         self.inference_covariance = np.zeros((total_length, total_length))

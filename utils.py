@@ -222,8 +222,7 @@ def process_to_overdensity_map(counts_map, mask, weight_map=None, nside=2048):
     # Add weights to mask, and mask pictures below the min weight
     if weight_map is not None:
         mask *= weight_map
-        mask /= mask.max()
-        # min_weight = 0.5
+        # mask /= mask.max()
         min_weight = np.percentile(mask[mask > 0], 1)
         mask[mask < min_weight] = 0
 
@@ -340,8 +339,8 @@ def get_config(data_name, experiment_name=None, as_struct=False):
 
         # Dictionary fields, flatten to proper values
         if config['lss_survey_name'] == 'LoTSS_DR2':
-            for key in ['z_tail', 'z_sfg', 'a', 'r', 'offset', 'a_2', 'r_2', 'n', 'b_g', 'b_g_scaled', 'b_a', 'b_b', 'b_0', 'b_1', 'b_2',
-                        'b_eff_tomo', 'A_sn', 'A_z_tail']:
+            for key in ['z_0', 'gamma', 'z_tail', 'z_sfg', 'a', 'r', 'offset', 'a_2', 'r_2', 'n', 'b_g', 'b_g_scaled',
+                        'b_a', 'b_b', 'b_0', 'b_1', 'b_2', 'b_eff_tomo', 'A_sn', 'A_z_tail', 'A', 'B', 'C', 'A_z']:
                 if key in config:
                     config[key] = config[key][config['flux_min_cut']]
         elif config['lss_survey_name'] == 'KiDS_QSO':

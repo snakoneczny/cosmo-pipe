@@ -28,13 +28,19 @@ LoTSS_DR2:
   }
 
   # Redshift
-  dn_dz_model: 'power_law'  # deep_fields, tomographer
+  dn_dz_model: 'deep_fields'  # deep_fields, tomographer
   # z_tail
-  z_tail: {2: 1.3, 1.5: 1.0, 1.0: 1.0, 0.5: 1.0}
+  z_0: {2: 0.1, 1.5: 0.1, 1.0: 0.1}
+  gamma: {2: 2.0, 1.5: 2.0, 1.0: 2.0}
+  z_tail: {2: 1.0, 1.5: 1.0, 1.0: 1.0}
+  A: {2: 0.1, 1.5: 0.1, 1.0: 0.1}
+  B: {2: 0.5, 1.5: 0.5, 1.0: 0.5}
+  C: {2: 0.25, 1.5: 0.25, 1.0: 0.25}
+  A_z: {2: 1.0, 1.5: 1.0, 1.0: 1.0}
   # power_law
-  z_sfg: {2: 0.1, 1.5: 0.1, 1.0: 0.1, 0.5: 0.1}
-  a: {2: 4.5, 1.5: 4.5, 1.0: 4.5, 0.5: 4.5}
-  r: {2: 0.5, 1.5: 0.5, 1.0: 0.5, 0.5: 0.5}
+  z_sfg: {2: 0.1, 1.5: 0.1, 1.0: 0.1}
+  a: {2: 5.0, 1.5: 5.0, 1.0: 5.0}
+  r: {2: 0.5, 1.5: 0.5, 1.0: 0.5}
   n: {2.0: 100000, 1.5: 100000, 1.0: 100000}
   # double_power_law
   a_2: {2: 6.0, 1.5: 6.0, 1.0: 6.0}
@@ -59,7 +65,7 @@ LoTSS_DR2:
   b_eff_tomo: {2: 2.5, 1.5: 2.5, 1.0: 2.5}
 
   # Shot noise
-  A_sn: {2: 1, 1.5: 1, 1.0: 1}
+  A_sn: {2: 1.0, 1.5: 1.0, 1.0: 1.0}
 
   # Cosmology
   cosmology_name: planck
@@ -68,10 +74,10 @@ LoTSS_DR2:
   # Inference
   mcmc_engine: emcee  # zeus, emcee
   continue_sampling: False
-  redshifts_to_fit: [deep_fields]  # deep_fields, tomographer
+  redshifts_to_fit: []  # deep_fields, tomographer
   correlations_to_use: [gg, gk]  # gg, gk, gt
-  # sigma8, Omega_m, b_g, b_g_scaled, b_a, b_b, b_2, b_1, b_0, A_sn, z_sfg, a, r, offset, a_2, r_2, n, A_z_tail
-  to_infere: [b_g_scaled, A_sn, z_sfg, a, r]
+  # sigma8, Omega_m, b_g, b_g_scaled, b_a, b_b, b_2, b_1, b_0, A_sn, z_0, gamma, z_tail, z_sfg, a, r, offset, a_2, r_2, n, A_z_tail
+  to_infere: [b_g_scaled, A_sn]  # , z_0, gamma, z_tail, A, B, C, A_z]
   max_iterations: 50000
   n_walkers: 32
 

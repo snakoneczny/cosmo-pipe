@@ -2,17 +2,17 @@ import math
 import os
 from collections import defaultdict
 
-import healpy as hp
 import numpy as np
+import pandas as pd
+import healpy as hp
 from scipy.special import erf
 from scipy.integrate import simps
+from scipy import signal
 from tqdm import tqdm
-import pandas as pd
 
 from env_config import DATA_PATH
 from utils import get_map, read_fits_to_pandas
 
-# (8, 4) 32 in total, (4, 2) 16 in total
 LOTSS_JACKKNIFE_REGIONS = [
     {'lon': (113, 260, 11), 'lat': (25, 68, 4)},
     {'lon': (37, -25, 5), 'lat': (19, 40, 2)},
@@ -137,8 +137,8 @@ def get_redshift_distributions(data_optical, data_skads):
 
 
 def get_lotss_redshift_distribution(config=None, model='power_law', z_sfg=None, a=None, r=None, a_2=None, r_2=None,
-                                    offset=None, n=1, z_tail=None, flux_cut=None, A_z_tail=None, z_arr=None, z_max=6,
-                                    normalize=False):
+                                    offset=None, n=1, z_0=None, gamma=None, z_tail=None, A=None, B=None, C=None,
+                                    A_z=None, flux_cut=None, A_z_tail=None, z_arr=None, z_max=6, normalize=False):
     if config:
         model = config.dn_dz_model
         z_sfg = getattr(config, 'z_sfg', None)
@@ -148,19 +148,29 @@ def get_lotss_redshift_distribution(config=None, model='power_law', z_sfg=None, 
         a_2 = getattr(config, 'a_2', None)
         r_2 = getattr(config, 'r_2', None)
         n = getattr(config, 'n', None)
+        z_0 = getattr(config, 'z_0', None)
+        gamma = getattr(config, 'gamma', None)
         z_tail = getattr(config, 'z_tail', None)
+        A = getattr(config, 'A', None)
+        B = getattr(config, 'B', None)
+        C = getattr(config, 'C', None)
+        A_z = getattr(config, 'A_z', None)
         flux_cut = getattr(config, 'flux_min_cut', None)
         A_z_tail = getattr(config, 'A_z_tail', None)
 
     if model == 'deep_fields':
-        deepfields_file = 'LoTSS/DR2/pz_deepfields/AllFields_Pz_dat_Fllim1_{}_Fllim2_0.0_Final_Trapz_CH_Pz.fits'.format(
+        deepfields_file = 'LoTSS/DR2/pz_deepfields/AllFields_Pz_dat_Fllim1_{}_Final_Trapz_Pz.fits'.format(
             flux_cut)
         pz_deepfields = read_fits_to_pandas(os.path.join(DATA_PATH, deepfields_file))
 
         # z_arr = pz_deepfields['zbins']
         # n_arr = pz_deepfields['pz']  # pz_boot_mean
         z_arr = pz_deepfields['z']
-        n_arr = pz_deepfields['Nz_weighted_fields']
+        n_arr = pz_deepfields['Nz_weighted_fields_Photoz_only']
+        # err_arr = pz_deepfields['Nz_fields_err_combafter_Photoz_only']
+
+        # n_arr = signal.savgol_filter(n_arr, 101, 5)  # window size, polynomial order
+        # err_arr = signal.savgol_filter(err_arr, 201, 1)
 
     elif model == 'tomographer':
         filename = 'LoTSS/DR2/tomographer/{}mJy_{}SNR_srl_catalog_inner.csv'.format(
@@ -186,9 +196,9 @@ def get_lotss_redshift_distribution(config=None, model='power_law', z_sfg=None, 
             n_arr_2[z_arr <= offset] = 0
             n_arr += n_arr_2
         elif model == 'z_tail':
-            z_0 = 0.1
-            gamma = 3.5
-            n_arr = ((z_arr / z_0) ** 2) / (1 + (z_arr / z_0) ** 2) / (1 + (z_arr / z_tail) ** gamma)
+            # z_0 = 0.1
+            # gamma = 3.5
+            n_arr = ((z_arr / z_0) ** 2) / (1 + (z_arr / z_0) ** 2) / (1 + (z_arr / z_tail) ** gamma)  # + A * np.exp(-np.power(z_arr - B, 2) / (2 * C ** 2)))
         else:
             raise Exception('Not known redshift distribution model: {}'.format(model))
 
@@ -395,13 +405,15 @@ def get_dr2_inner_regions(nside):
     for i in tqdm(range(len(mask))):
         lon, lat = hp.pixelfunc.pix2ang(nside=nside, ipix=i, nest=False, lonlat=True)
         if (
-                (0 < lon < 37 and 25 < lat < 40) or
-                (0 < lon < 32 and 19 < lat < 25) or
-                (113 < lon < 125 and 30 < lat < 39) or
-                (125 < lon < 250 and 30 < lat < 68) or
+                (1 < lon < 37 and 25 < lat < 40) or
+                (1 < lon < 32 and 19 < lat < 25) or
+                (0 < lon < 1 and 19 < lat < 35) or
+                (113 < lon < 127 and 28 < lat < 39) or
+                (113 < lon < 128 and 27.5 < lat < 30) or
+                (127 < lon < 248 and 30 < lat < 67) or
                 (193 < lon < 208 and 25 < lat < 30) or
-                (250 < lon < 260 and 30 < lat < 45) or
-                (335 < lon < 360 and 19 < lat < 35)
+                (248 < lon < 270 and 30 < lat < 45) or
+                (332 < lon < 360 and 19 < lat < 35)
         ):
             mask[i] = 1
 

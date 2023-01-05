@@ -7,37 +7,41 @@ from experiment import Experiment
 # Minimum flux (mJy), minimum signal to noise, correlation symbol, redshifts, with A_sn, ell_max, matter power spectrum,
 # mock
 to_run = [
+    # Two most important setups to run first
+    # (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 202, 'halofit', [], False),
+    # (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 502, 'halofit', [], False),
+
     # C_gg & C_gk
-    (2.0, 5.0, ['gg'], ['deep_fields'], True, 202, 'halofit', [], False),
-    (2.0, 5.0, ['gk'], ['deep_fields'], False, 202, 'halofit', [], False),
-    (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 202, 'halofit', [], False),
-    (2.0, 5.0, ['gg', 'gk', 'gt'], ['deep_fields'], True, 202, 'halofit', [], False),
+    # (2.0, 5.0, ['gg'], ['deep_fields'], True, 202, 'halofit', [], False),
+    # (2.0, 5.0, ['gk'], ['deep_fields'], False, 202, 'halofit', [], False),
 
     # ell range and linear vs halofit
-    (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 202, 'linear', [], False),
-    (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 502, 'linear', [], False),
-    (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 802, 'linear', [], False),
-    (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 502, 'halofit', [], False),
-    (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 802, 'halofit', [], False),
-
-    # Data tests
-    (1.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 202, 'halofit', [], False),
-    (1.0, 7.5, ['gg', 'gk'], ['deep_fields'], True, 202, 'halofit', [], False),
-    (1.5, 5.0, ['gg', 'gk'], ['deep_fields'], True, 202, 'halofit', [], False),
-    (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], True, 202, 'halofit', [], False),
-    (2.0, 7.5, ['gg', 'gk'], ['deep_fields'], True, 202, 'halofit', [], False),
+    # (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 802, 'halofit', [], False),
+    # (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 202, 'linear', [], False),
+    # (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 502, 'linear', [], False),
+    # (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 802, 'linear', [], False),
 
     # Cosmology
     (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 202, 'halofit', ['sigma8'], False),
     (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 502, 'halofit', ['sigma8'], False),
+    (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 502, 'linear', ['sigma8'], False),
+
+    # Data tests
+    # (1.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 202, 'halofit', [], False),
+    # (1.0, 7.5, ['gg', 'gk'], ['deep_fields'], True, 202, 'halofit', [], False),
+    # (1.5, 5.0, ['gg', 'gk'], ['deep_fields'], True, 202, 'halofit', [], False),
+    # (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], True, 202, 'halofit', [], False),
+    # (2.0, 7.5, ['gg', 'gk'], ['deep_fields'], True, 202, 'halofit', [], False),
 
     # Mock tests
-    (1.5, 7.5, ['gg'], [], True, 202, 'linear', [], True),
-    (1.5, 7.5, ['gg'], [], True, 502, 'linear', [], True),
-    (1.5, 7.5, ['gg'], [], True, 202, 'halofit', [], True),
-    (1.5, 7.5, ['gg'], [], True, 502, 'halofit', [], True),
+    # (1.5, 7.5, ['gg'], [], True, 202, 'linear', [], True),
+    # (1.5, 7.5, ['gg'], [], True, 502, 'linear', [], True),
+    # (1.5, 7.5, ['gg'], [], True, 202, 'halofit', [], True),
+    # (1.5, 7.5, ['gg'], [], True, 502, 'halofit', [], True),
 ]
 
+# bias_models = ['constant', 'scaled', 'quadratic']
+# bias_models = ['constant', 'scaled']
 # bias_models = ['constant']
 bias_models = ['scaled']
 # bias_models = ['quadratic']

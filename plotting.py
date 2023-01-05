@@ -266,7 +266,7 @@ def my_mollview(map, additional_mask=None, fwhm=0, unit=None, cmap='jet', zoom=F
     if additional_mask is not None:
         map = copy.copy(map)
         map.mask = np.logical_or(map.mask, np.logical_not(additional_mask))
-    if fwhm > 0:
+    if fwhm:
         map = hp.sphtfunc.smoothing(map, fwhm=math.radians(fwhm))
     view_func = hp.zoomtool.mollzoom if zoom else hp.mollview
     view_func(map, cmap=cmap, unit=unit, rot=rot, title='', format=format)
