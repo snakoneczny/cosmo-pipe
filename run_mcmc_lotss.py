@@ -7,31 +7,27 @@ from experiment import Experiment
 # Minimum flux (mJy), minimum signal to noise, correlation symbol, redshifts, with A_sn, ell_max, matter power spectrum,
 # mock
 to_run = [
-    # Two most important setups to run first
-    # (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 202, 'halofit', [], False),
-    # (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 502, 'halofit', [], False),
+    # Cosmology
+    (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 202, 502, 'halofit', ['sigma8'], False),
+#     (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 502, 802, 'halofit', ['sigma8'], False),
+#     (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 502, 802, 'linear', ['sigma8'], False),
 
     # C_gg & C_gk
-    # (2.0, 5.0, ['gg'], ['deep_fields'], True, 202, 'halofit', [], False),
-    # (2.0, 5.0, ['gk'], ['deep_fields'], False, 202, 'halofit', [], False),
+    # (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 202, 502, 'halofit', [], False),
+    # (2.0, 5.0, ['gg'], ['deep_fields'], True, 202, 502, 'halofit', [], False),
+    # (2.0, 5.0, ['gk'], ['deep_fields'], False, 202, 502, 'halofit', [], False),
 
     # ell range and linear vs halofit
-    # (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 802, 'halofit', [], False),
-    # (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 202, 'linear', [], False),
-    # (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 502, 'linear', [], False),
-    # (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 802, 'linear', [], False),
-
-    # Cosmology
-    (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 202, 'halofit', ['sigma8'], False),
-    (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 502, 'halofit', ['sigma8'], False),
-    (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 502, 'linear', ['sigma8'], False),
+    # (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 502, 802, 'halofit', [], False),
+    # (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 202, 502, 'linear', [], False),
+    # (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 502, 802, 'linear', [], False),
 
     # Data tests
-    # (1.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 202, 'halofit', [], False),
-    # (1.0, 7.5, ['gg', 'gk'], ['deep_fields'], True, 202, 'halofit', [], False),
-    # (1.5, 5.0, ['gg', 'gk'], ['deep_fields'], True, 202, 'halofit', [], False),
-    # (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], True, 202, 'halofit', [], False),
-    # (2.0, 7.5, ['gg', 'gk'], ['deep_fields'], True, 202, 'halofit', [], False),
+    # (1.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 202, 502, 'halofit', [], False),
+    # (1.0, 7.5, ['gg', 'gk'], ['deep_fields'], True, 202, 502, 'halofit', [], False),
+    # (1.5, 5.0, ['gg', 'gk'], ['deep_fields'], True, 202, 502, 'halofit', [], False),
+    # (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], True, 202, 502, 'halofit', [], False),
+    # (2.0, 7.5, ['gg', 'gk'], ['deep_fields'], True, 202, 502, 'halofit', [], False),
 
     # Mock tests
     # (1.5, 7.5, ['gg'], [], True, 202, 'linear', [], True),
@@ -61,23 +57,24 @@ config.read_correlations_flag = False
 config.read_covariance_flag = True
 config.max_iterations = 10000
 
-for i, (flux_cut, snr_cut, correlation_symbols, redshifts, with_A_sn, ell_max, matter_power_spectrum, cosmo_params,
+for i, (flux_cut, snr_cut, correlation_symbols, redshifts, with_A_sn, ell_max_gg, ell_max_gk, matter_power_spectrum, cosmo_params,
         is_mock) in enumerate(to_run):
     for j, bias_model in enumerate(bias_models):
         print('Setup {}/{}: bias {}/{}'.format(i + 1, len(to_run), j + 1, len(bias_models)))
         print(
-            '{} mJy, {} SNR, correlations: {}, redshifts: {}, with A_sn = {}, ell_max = {}, matter power spectrum = {}, bias_model = {}'.format(
-                flux_cut, snr_cut, correlation_symbols, redshifts, with_A_sn, ell_max, matter_power_spectrum, bias_model
+            '{} mJy, {} SNR, correlations: {}, redshifts: {}, with A_sn = {}, ell_max_gg = {}, ell_max_gk = {}, matter power spectrum = {}, bias_model = {}'.format(
+                flux_cut, snr_cut, correlation_symbols, redshifts, with_A_sn, ell_max_gg, ell_max_gk, matter_power_spectrum, bias_model
             ))
 
         config.is_mock = is_mock
         config.flux_min_cut = flux_cut
         config.signal_to_noise = snr_cut
         config.correlations_to_use = correlation_symbols
-        config.l_range = dict([(correlation_symbol, [52, ell_max]) for correlation_symbol in ['gg', 'gk']])
         config.ells_per_bin = dict([(correlation_symbol, 50) for correlation_symbol in ['gg', 'gk']])
-        config.l_range['gt'] = [2, 36]
         config.ells_per_bin['gt'] = 16
+        config.l_range['gg'] = [52, ell_max_gg]
+        config.l_range['gk'] = [52, ell_max_gk]
+        config.l_range['gt'] = [2, 36]
 
         config.redshifts_to_fit = redshifts
         config.dn_dz_model = 'deep_fields' if len(redshifts) == 0 else 'power_law'

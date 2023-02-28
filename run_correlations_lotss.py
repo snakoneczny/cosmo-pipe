@@ -18,8 +18,8 @@ config.redshifts_to_fit = []
 print(config.__dict__)
 
 # Iterate thorugh parameters
-for flux_min_cut in [1.5]:
-    for signal_to_noise in [7.5]:
+for flux_min_cut in [2.0, 1.5]:
+    for signal_to_noise in [5.0, 7.5]:
         print('Processing: flux={}, snr={}'.format(flux_min_cut, signal_to_noise))
         config.flux_min_cut = flux_min_cut
         config.signal_to_noise = signal_to_noise
@@ -30,8 +30,8 @@ for flux_min_cut in [1.5]:
         save_correlations(experiment)
 
         # Mock
-        if flux_min_cut == 1.5 and signal_to_noise == 7.5:
-            config.is_mock = True
-            experiment = Experiment(config, set_data=True, set_maps=True)
-            experiment.set_correlations()
-            save_correlations(experiment)
+        # if flux_min_cut == 1.5 and signal_to_noise == 7.5:
+        #     config.is_mock = True
+        #     experiment = Experiment(config, set_data=True, set_maps=True)
+        #     experiment.set_correlations()
+        #     save_correlations(experiment)

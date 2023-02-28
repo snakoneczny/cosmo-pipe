@@ -22,44 +22,44 @@ class struct(object):
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
 
-
-class ISWTracer(ccl.Tracer):
-    """Specific :class:`Tracer` associated with the integrated Sachs-Wolfe
-    effect (ISW). Useful when cross-correlating any low-redshift probe with
-    the primary CMB anisotropies. The ISW contribution to the temperature
-    fluctuations is:
-
-    .. math::
-       \\frac{\\Delta T}{T} = 2\\int_0^{\\chi_{LSS}}d\\chi a\\,\\dot{\\phi}
-
-    Any angular power spectra computed with this tracer, should use
-    a three-dimensional power spectrum involving the matter power spectrum.
-    The current implementation of this tracers assumes a standard Poisson
-    equation relating :math:`\\phi` and :math:`\\delta`, and linear structure
-    growth. Although this should be valid  in :math:`\\Lambda`CDM and on
-    the large scales the ISW is sensitive to, these approximations must be
-    borne in mind.
-
-    Args:
-        cosmo (:class:`~pyccl.core.Cosmology`): Cosmology object.
-        zmax (float): maximum redshift up to which we define the
-            kernel.
-        n_chi (float): number of intervals in the radial comoving
-            distance on which we sample the kernel.
-    """
-
-    def __init__(self, cosmo, z_max=6., n_chi=1024):
-        self.chi_max = ccl.comoving_radial_distance(cosmo, 1. / (1 + z_max))
-        chi = np.linspace(0, self.chi_max, n_chi)
-        a_arr = ccl.scale_factor_of_chi(cosmo, chi)
-        H0 = cosmo['h'] / ccl.physical_constants.CLIGHT_HMPC
-        OM = cosmo['Omega_c'] + cosmo['Omega_b']
-        Ez = ccl.h_over_h0(cosmo, a_arr)
-        fz = ccl.growth_rate(cosmo, a_arr)
-        w_arr = 3 * cosmo['T_CMB'] * H0 ** 3 * OM * Ez * chi ** 2 * (1 - fz)
-
-        self._trc = []
-        self.add_tracer(cosmo, kernel=(chi, w_arr), der_bessel=-1)
+#
+# class ISWTracer(ccl.Tracer):
+#     """Specific :class:`Tracer` associated with the integrated Sachs-Wolfe
+#     effect (ISW). Useful when cross-correlating any low-redshift probe with
+#     the primary CMB anisotropies. The ISW contribution to the temperature
+#     fluctuations is:
+#
+#     .. math::
+#        \\frac{\\Delta T}{T} = 2\\int_0^{\\chi_{LSS}}d\\chi a\\,\\dot{\\phi}
+#
+#     Any angular power spectra computed with this tracer, should use
+#     a three-dimensional power spectrum involving the matter power spectrum.
+#     The current implementation of this tracers assumes a standard Poisson
+#     equation relating :math:`\\phi` and :math:`\\delta`, and linear structure
+#     growth. Although this should be valid  in :math:`\\Lambda`CDM and on
+#     the large scales the ISW is sensitive to, these approximations must be
+#     borne in mind.
+#
+#     Args:
+#         cosmo (:class:`~pyccl.core.Cosmology`): Cosmology object.
+#         zmax (float): maximum redshift up to which we define the
+#             kernel.
+#         n_chi (float): number of intervals in the radial comoving
+#             distance on which we sample the kernel.
+#     """
+#
+#     def __init__(self, cosmo, z_max=6., n_chi=1024):
+#         self.chi_max = ccl.comoving_radial_distance(cosmo, 1. / (1 + z_max))
+#         chi = np.linspace(0, self.chi_max, n_chi)
+#         a_arr = ccl.scale_factor_of_chi(cosmo, chi)
+#         H0 = cosmo['h'] / ccl.physical_constants.CLIGHT_HMPC
+#         OM = cosmo['Omega_c'] + cosmo['Omega_b']
+#         Ez = ccl.h_over_h0(cosmo, a_arr)
+#         fz = ccl.growth_rate(cosmo, a_arr)
+#         w_arr = 3 * cosmo['T_CMB'] * H0 ** 3 * OM * Ez * chi ** 2 * (1 - fz)
+#
+#         self._trc = []
+#         self.add_tracer(cosmo, kernel=(chi, w_arr), der_bessel=-1)
 
 
 # TODO: pass inverted covariance

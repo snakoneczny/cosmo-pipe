@@ -18,7 +18,7 @@ LoTSS_DR2:
   error_method: jackknife  # jackknife, gauss
   l_range: {
     gg: [52, 202],  # 252, 502, 802
-    gk: [52, 202],  # 252, 502, 802
+    gk: [52, 502],  # 252, 502, 802
     gt: [2, 34],
   }
   ells_per_bin: {
@@ -28,7 +28,7 @@ LoTSS_DR2:
   }
 
   # Redshift
-  dn_dz_model: 'deep_fields'  # deep_fields, tomographer
+  dn_dz_model: 'power_law'  # deep_fields, tomographer
   # z_tail
   z_0: {2: 0.1, 1.5: 0.1, 1.0: 0.1}
   gamma: {2: 2.0, 1.5: 2.0, 1.0: 2.0}
@@ -40,7 +40,7 @@ LoTSS_DR2:
   # power_law
   z_sfg: {2: 0.1, 1.5: 0.1, 1.0: 0.1}
   a: {2: 5.0, 1.5: 5.0, 1.0: 5.0}
-  r: {2: 0.5, 1.5: 0.5, 1.0: 0.5}
+  r: {2: 0.1, 1.5: 0.1, 1.0: 0.1}
   n: {2.0: 100000, 1.5: 100000, 1.0: 100000}
   # double_power_law
   a_2: {2: 6.0, 1.5: 6.0, 1.0: 6.0}
@@ -74,10 +74,10 @@ LoTSS_DR2:
   # Inference
   mcmc_engine: emcee  # zeus, emcee
   continue_sampling: False
-  redshifts_to_fit: []  # deep_fields, tomographer
+  redshifts_to_fit: [deep_fields]  # deep_fields, tomographer
   correlations_to_use: [gg, gk]  # gg, gk, gt
   # sigma8, Omega_m, b_g, b_g_scaled, b_a, b_b, b_2, b_1, b_0, A_sn, z_0, gamma, z_tail, z_sfg, a, r, offset, a_2, r_2, n, A_z_tail
-  to_infere: [b_g_scaled, A_sn]  # , z_0, gamma, z_tail, A, B, C, A_z]
+  to_infere: [sigma8, b_g_scaled, A_sn, z_sfg, a, r]  # , z_0, gamma, z_tail, A, B, C, A_z]
   max_iterations: 50000
   n_walkers: 32
 

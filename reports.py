@@ -2,7 +2,8 @@ import os
 from collections import defaultdict
 from random import random, sample
 import logging
-import warnings
+import itertools
+
 
 import numpy as np
 import pandas as pd
@@ -60,11 +61,10 @@ def print_lotss_constraints_table(rows, bias_models=None, with_A_sn_arr=None, ta
         name = row[0]
         flux_cut = row[1]
         snr_cut = row[2]
-        correlations = row[3]
+        correlation_tuples = row[3]
         redshifts = row[4]
         cosmo_params = row[5]
-        ell_max = row[6]
-        matter_power_spectrum = row[7]
+        matter_power_spectrum = row[6]
 
         data_part = '{}mJy_{}SNR'.format(flux_cut, snr_cut)
         for bias_model in bias_models:
@@ -88,8 +88,9 @@ def print_lotss_constraints_table(rows, bias_models=None, with_A_sn_arr=None, ta
                 if 'tomographer' in redshifts:
                     param_part = '_'.join([param_part, 'n'])
 
-                experiment_name = '{}__{}_ell-52-{}__redshift_{}__bias_{}__{}__emcee_{}'.format(
-                    data_part, '-'.join(correlations), ell_max, redshift_part, bias_model, matter_power_spectrum, param_part)
+                correlation_part = '_'.join(['{}-52-{}'.format(corr[0], corr[1]) for corr in correlation_tuples])
+                experiment_name = '{}__{}__redshift_{}__bias_{}__{}__emcee_{}'.format(
+                    data_part, correlation_part, redshift_part, bias_model, matter_power_spectrum, param_part)
                 if tag:
                     experiment_name = '__'.join([experiment_name, tag])
 
@@ -124,7 +125,7 @@ def print_lotss_constraints_table(rows, bias_models=None, with_A_sn_arr=None, ta
 
 
 def compare_biases(experiments, data_name, x_scale='log', x_max=None, y_min=None, y_max=None, title=None,
-                   add_qsos=False):
+                   add_qsos=False, add_radio=False):
     n_exp = len(experiments)
     alpha = 1.0 / n_exp
 
@@ -138,9 +139,11 @@ def compare_biases(experiments, data_name, x_scale='log', x_max=None, y_min=None
         experiment = Experiment(config, set_data=False, set_maps=False)
 
         # Get z array
-        z_arr, _ = experiment.get_redshift_dist_function(config=config, normalize=False)
+        z_arr, n_arr = experiment.get_redshift_dist_function(config=config, normalize=False)
         if x_max:
-            z_arr = z_arr[z_arr < x_max]
+            idx = z_arr < x_max
+            z_arr = z_arr[idx]
+            n_arr = n_arr[idx]
 
         # Iterate samples
         bias_arr_store = []
@@ -168,17 +171,81 @@ def compare_biases(experiments, data_name, x_scale='log', x_max=None, y_min=None
         plt.plot(z_arr, bias_arr_mean, label=experiment_label)
         plt.fill_between(z_arr, bias_arr_min, bias_arr_max, alpha=alpha)
 
+    # Plot mean redshift
+    z_mean = np.average(z_arr, weights=n_arr)
+    z_std = np.average((z_arr - z_mean) ** 2, weights=n_arr)
+    ax = plt.gca()
+    plt.axvline(x=z_mean, linestyle='--', label='mean redshift', alpha=0.8, color='lightsteelblue')
+    ax.axvspan(z_mean - z_std / 2, z_mean + z_std / 2, alpha=0.3, color='lightsteelblue')
+
     if add_qsos:
         z_arr, b_arr, b_err = get_sherwin_qso_bias()
         plt.errorbar(z_arr, b_arr, yerr=b_err, marker='s', color='k', linestyle='', markersize=3,
                      label='Sherwin et al. 2012')
 
+    if add_radio:
+        plot_radio_bias()
+
     plt.title(title)
-    plt.legend(loc='upper left')
+    plt.legend(loc='upper left', ncol=2, labelspacing=0.1)
     plt.xlabel('log(1 + z)' if x_scale == 'log' else 'z')
     plt.ylabel('$b_g(z)$')
     plt.ylim((y_min, y_max))
+    plt.grid()
     plt.show()
+
+
+def plot_radio_bias():
+    # Mean/median redshift, bias, +, -
+    to_plot = [
+        # ('Lindsay+ 2014', [  # ???
+        #     # (1.09, 1.12, 0.03, 0.03),
+        #     (0.33, 0.59, 0.02, 0.01),
+        #     (0.79, 0.91, 0.02, 0.03),
+        #     (1.33, 1.21, 0.04, 0.04),
+        #     (2.16, 2.23, 0.12, 0.12),
+        # ]),
+        ('Nusser & Tiwari 2015', [  # NVSS
+            # function form: 0.33 z2 + 0.85z + 1.6 (z max 2 u Alonso, 3 u Hale)
+            (0.5, 2.093, 0.164, 0.109),
+        ]),
+        ('Hale+ 2018', [  # COSMOS
+            # All
+            # (1.16, 2.7, 0.1, 0.1),
+            # SFGs
+            (0.62, 1.5, 0.1, 0.2),
+            (1.07, 2.3, 0.2, 0.2),
+            # AGNs
+            (0.7, 2.1, 0.2, 0.2),
+            (1.24, 3.6, 0.2, 0.2),
+            (1.77, 3.5, 0.4, 0.4),
+         ]),
+        ('Chakraborty+ 2020', [  # Elais N1
+            # 400MHz AGN
+            (0.91, 3.17, 0.5, 0.4),
+            # 612MHz AGN
+            (0.85, 2.6, 0.6, 0.5),
+            # 400MHz SFG
+            (0.64, 1.65, 0.14, 0.14),
+            # 612MHz SFG
+            (0.57, 1.59, 0.2, 0.2),
+         ]),
+        ('Mazumder+ 2022', [  # Lockman Hole
+            # AGN
+            (1.02, 3.74, 0.39, 0.36),
+            # SFG
+            (0.2, 1.06, 0.1, 0.1),
+         ])
+    ]
+
+    markers = itertools.cycle(('o', 's', '>', 'H', 'D'))
+    for label, point_array in to_plot:
+        marker = next(markers)
+        for i, point in enumerate(point_array):
+            z = point[0]
+            b_mean = point[1]
+            plt.errorbar(z, b_mean, yerr=[[point[3]], [point[2]]], fmt=marker, color='grey', linestyle='', label=label if i == 0 else '')
+    plt.legend()
 
 
 def compare_redshifts(experiments, data_name):
@@ -236,37 +303,26 @@ def show_mcmc_report(experiment_name, data_name, quick=False):
     # Sigmas and chi-squared
     make_sigmas_report(config, best_fit_params)
 
-    # Zeus traingle plot
-    if len(labels) > 1:
-        # truths = [None] * len(labels)
-        # if 'sigma8' in labels:
-        #     truths[labels.index('sigma8')] = 0.811
-        # if 'Omega_m' in labels:
-        #     truths[labels.index('Omega_m')] = 0.315
-
-        samples_size = samples.shape[0]
-        n_smpl = 1000
-        samples_to_traingle = samples[np.random.randint(samples_size, size=n_smpl), :] if samples_size > n_smpl else samples
-
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore')
-            _, _ = zeus.cornerplot(samples_to_traingle, labels=labels)  # , truth=truths)
-            plt.show()
+    # # Zeus traingle plot
+    # if len(labels) > 1:
+    #     # truths = [None] * len(labels)
+    #     # if 'sigma8' in labels:
+    #     #     truths[labels.index('sigma8')] = 0.811
+    #     # if 'Omega_m' in labels:
+    #     #     truths[labels.index('Omega_m')] = 0.315
+    #
+    #     samples_size = samples.shape[0]
+    #     n_smpl = 1000
+    #     samples_to_traingle = samples[np.random.randint(samples_size, size=n_smpl), :] if samples_size > n_smpl else samples
+    #
+    #     with warnings.catch_warnings():
+    #         warnings.simplefilter('ignore')
+    #         _, _ = zeus.cornerplot(samples_to_traingle, labels=labels)  # , truth=truths)
+    #         plt.show()
 
     if 'sigma8' in labels:
-        g = sns.kdeplot(samples[:, labels.index('sigma8')], bw=0.5, label=config.lss_survey_name)
-
-        # get distplot line points
-        line = g.get_lines()[0]
-        yd = line.get_ydata()
-        max_val = yd.max()
-
-        # Planck results
-        x = np.linspace(0.4, 1.4, 100)
-        y_planck = stats.norm.pdf(x, 0.811, 0.006)
-        y_planck *= max_val / y_planck.max()
-        plt.plot(x, y_planck, label='Planck')
-
+        sns.kdeplot(samples[:, labels.index('sigma8')], bw=0.5, label=config['lss_survey_name'])
+        plot_major_sigma8()
         plt.xlabel('$\sigma_8$')
         plt.ylabel('probability')
         plt.legend()
@@ -278,6 +334,19 @@ def show_mcmc_report(experiment_name, data_name, quick=False):
     # Correlation, redshift and bias plots
     if not quick:
         make_param_plots(config, labels, samples)
+
+
+def plot_major_sigma8():
+    to_plot = [
+        ('Planck', 0.811, 0.006),
+        ('KiDS', 0.76, 0.025),
+        ('DES', 0.733, 0.05),
+    ]
+    ax = plt.gca()
+    for label, mean, error in to_plot:
+        plt.axvline(x=mean, linestyle='--', label=label, alpha=0.8, color=next(ax._get_lines.prop_cycler)['color'])
+        ax.axvspan(mean - error, mean + error, alpha=0.1, color=plt.gca().lines[-1].get_color())
+    plt.legend()
 
 
 def get_samples(experiment_name, data_name, print_stats=False):
@@ -426,7 +495,6 @@ def make_param_plots(config, arg_names, samples):
             # f = interp1d(ell_arr, correlation, kind='linear')
             # correlation_interpolated = f(ell_dense)
             # plt.plot(ell_dense, correlation_interpolated, 'C1', alpha=0.02)
-
 
         # Data
         noise = experiment.noise_decoupled[correlation_symbol]

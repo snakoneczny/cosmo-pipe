@@ -68,7 +68,7 @@ def get_cmb_temperature_map(nside=None):
 def get_cmb_lensing_noise(nside):
     assert nside <= 2048
 
-    path = os.path.join(DATA_PATH, 'Planck2018/COM_Lensing_2048_R2.00/nlkk.dat')
+    path = os.path.join(DATA_PATH, 'Planck2018/COM_Lensing_4096_R3.00/MV/nlkk.dat')
     data = np.loadtxt(path, unpack=False)
     data = pd.DataFrame(data, columns=['l', 'nl', 'cl+nl'])
 
@@ -83,13 +83,21 @@ def get_cmb_lensing_noise(nside):
 
 
 def get_cmb_lensing_map(nside=None):
-    folder_path = os.path.join(DATA_PATH, 'Planck2018/COM_Lensing_2048_R2.00')
-    map_path = os.path.join(folder_path, 'dat_klm.fits')
+    folder_path = os.path.join(DATA_PATH, 'Planck2018/COM_Lensing_4096_R3.00')
+    map_path = os.path.join(folder_path, 'MV/dat_klm.fits')
     mask_path = os.path.join(folder_path, 'mask.fits')
 
     # Read
     klm = hp.read_alm(map_path)
-    map = hp.alm2map(klm, nside)
+
+    fl = np.zeros(hp.Alm.getlmax(klm.shape[0]))
+    fl[:3*nside] = 1
+    klm = hp.sphtfunc.almxfl(klm, fl)
+
+    # mmax = lmax = nside * 3 - 1
+    # n_max = int(mmax * (2 * lmax + 1 - mmax) / 2 + lmax + 1)
+    # klm = klm[:n_max]
+    map = hp.alm2map(klm, nside=nside)
     mask = hp.read_map(mask_path)
 
     # Rotate
@@ -98,9 +106,8 @@ def get_cmb_lensing_map(nside=None):
     mask = rotator.rotate_map_pixel(mask)
 
     # Adjust
-    mask = nmt.mask_apodization(mask, 0.2, apotype='C1')
     mask = hp.ud_grade(mask, nside_out=nside)
-    mask[mask < 0.1] = 0  # Visualization purpose
+    # map = hp.ud_grade(map, nside_out=nside)
 
     map = get_masked_map(map, mask)
     mask = get_masked_map(mask, mask)

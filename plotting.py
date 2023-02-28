@@ -39,7 +39,7 @@ def plot_many_correlations_comparison(correlations_dict, correlation_symbol, is_
     plt.yscale(y_scale)
     plt.xlabel('$\\ell$', fontsize=16)
     plt.ylabel('$C_\\ell^{{{}}}$'.format(correlation_symbol), fontsize=16)
-    plt.legend(loc='upper right', ncol=2, labelspacing=0.1)
+    plt.legend(loc='upper right', ncol=2)
     plt.grid()
     plt.title(title)
     plt.show()
@@ -150,7 +150,7 @@ def plot_correlation(experiment, correlation_symbol, x_min=0, x_max=None, y_min=
     plt.yscale(y_scale)
     plt.xlabel('$\\ell$', fontsize=16)
     plt.ylabel('$C_\\ell^{{{}}}$'.format(correlation_symbol), fontsize=16)
-    plt.legend(loc='upper right', ncol=2, labelspacing=0.1)
+    plt.legend(loc='upper right', ncol=2)
     plt.grid()
     plt.title(title)
     plt.show()
@@ -190,7 +190,8 @@ def plot_correlation_matrix(experiment):
     half_ticks = []
     lines = []
     next_start = -0.5
-    for correlation_symbol in experiment.config.correlations_to_use:
+    correlation_symbols = experiment.config.correlations_to_use
+    for correlation_symbol in correlation_symbols:
         n_ells = experiment.n_ells[correlation_symbol]
         half_ticks.append(next_start + n_ells / 2)
         next_start += n_ells
@@ -204,7 +205,7 @@ def plot_correlation_matrix(experiment):
     for x in lines:
         plt.axvline(x=x, color='black')
         plt.axhline(y=x, color='black')
-    correlation_symbols = [pretty_print_corr_symbol(corr_symbol) for corr_symbol in experiment.correlation_symbols]
+    correlation_symbols = [pretty_print_corr_symbol(corr_symbol) for corr_symbol in correlation_symbols]
     ax.set_xticklabels(correlation_symbols)
     ax.set_yticklabels(correlation_symbols)
     plt.show()

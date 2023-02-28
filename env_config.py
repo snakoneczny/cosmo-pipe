@@ -1,2 +1,2 @@
-DATA_PATH = '/home/snakoneczny/data'
-PROJECT_PATH = '/home/snakoneczny/workspace/cosmo_pipe'
+DATA_PATH = '/home/sjnakoneczny/data'
+PROJECT_PATH = '/home/sjnakoneczny/workspace/cosmo_pipe'

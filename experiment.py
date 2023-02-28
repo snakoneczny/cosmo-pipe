@@ -19,7 +19,7 @@ from scipy import signal
 from env_config import PROJECT_PATH, DATA_PATH
 from utils import logger, process_to_overdensity_map, get_pairs, get_correlation_matrix, get_redshift_distribution, \
     get_chi_squared, decouple_correlation, read_correlations, get_corr_mean_diff, get_correlations, \
-    get_jackknife_masks, read_covariances, read_fits_to_pandas, ISWTracer
+    get_jackknife_masks, read_covariances, read_fits_to_pandas
 from data_lotss import get_lotss_data, get_lotss_map, get_lotss_redshift_distribution, LOTSS_JACKKNIFE_REGIONS
 from data_nvss import get_nvss_map, get_nvss_redshift_distribution
 from data_kids_qso import get_kids_qsos, get_kids_qso_map
@@ -77,6 +77,7 @@ class Experiment:
         self.n_ells = {}
         self.cosmology = None
         self.get_redshift_dist_function = None
+        self.redshift_dists = None
 
         # MCMC containers
         self.inference_covariance = None
@@ -154,9 +155,10 @@ class Experiment:
         cosmology_params = self.get_updated_cosmology_parameters(to_update)
 
         # Check redshift prior
-        z_arr, n_arr = self.get_redshift_dist_function(config=config, normalize=False)
-        if (n_arr < 0).any():
-            return -np.inf
+        if len(self.config.redshifts_to_fit) > 0:
+            z_arr, n_arr = self.get_redshift_dist_function(config=config, normalize=False)
+            if (n_arr < 0).any():
+                return -np.inf
 
         # Check the bias prior if present
         if self.config.bias_model in ['quadratic_limited', 'quadratic']:
@@ -167,7 +169,8 @@ class Experiment:
         # Get theory correlations and bin spectra using coupling matrices in workspaces
         try:
             _, _, correlations_dict = self.get_theory_correlations(config, self.config.correlations_to_use,
-                                                                   interpolate=False, cosmology_params=cosmology_params)
+                                                                   interpolate=True, cosmology_params=cosmology_params,
+                                                                   randomize_errors=True)
         except:
             return -np.inf
 
@@ -199,7 +202,7 @@ class Experiment:
 
     def get_log_prior(self, theta):
         prior_dict = {
-            'A_sn': (0.8, 1.2),
+            'A_sn': (0.8, 1.4),
             'A_z_tail': (0.5, 2.0),
             'Omega_m': (0, np.inf),
             'sigma8': (0, np.inf),
@@ -622,9 +625,16 @@ class Experiment:
         for correlation_symbol in self.correlation_symbols:
             self.theory_correlations[correlation_symbol] += self.noise_curves[correlation_symbol]
 
-    def get_theory_correlations(self, config, correlation_symbols, cosmology_params=None, interpolate=False):
+    def get_theory_correlations(self, config, correlation_symbols, cosmology_params=None, interpolate=False,
+                                randomize_errors=False):
         # Get redshift distribution
         z_arr, n_arr = self.get_redshift_dist_function(config=config)
+        # if randomize_errors:
+        #     z_arr = self.z_arr
+        #     i = np.random.randint(0, len(self.redshift_dists))
+        #     n_arr = self.redshift_dists[i]
+        # else:
+        #     z_arr, n_arr = self.get_redshift_dist_function(config=config)
 
         # Get cosmology
         cosmology = self.cosmology if ((not cosmology_params) or cosmology_params == self.cosmology_params) else \
@@ -640,7 +650,7 @@ class Experiment:
         if 'k' in self.map_symbols:
             tracers_dict['k'] = ccl.CMBLensingTracer(cosmology, 1091)
         if 't' in self.map_symbols:
-            tracers_dict['t'] = ISWTracer(cosmology, z_max=6., n_chi=1024)
+            tracers_dict['t'] = ccl.ISWTracer(cosmology, z_max=6., n_chi=1024)
 
         correlations_dict = {}
         for correlation_symbol in correlation_symbols:
@@ -751,6 +761,8 @@ class Experiment:
             self.base_maps['g'], self.masks['g'], self.weight_maps['g'], self.processed_maps['g'], self.noise_curves[
                 'gg'] = process_to_overdensity_map(self.base_maps['g'], self.masks['g'], self.weight_maps['g'])
 
+        print('Masking: {}'.format(self.base_maps['g'].sum()))
+
         if 'k' in self.map_symbols:
             self.base_maps['k'], self.masks['k'] = get_cmb_lensing_map(self.config.nside)
             self.processed_maps['k'] = self.base_maps['k']
@@ -827,6 +839,18 @@ class Experiment:
         }
         self.get_redshift_dist_function = get_redshift_distribution_functions[self.config.lss_survey_name]
 
+        # Get random samples of redshift distribution
+        deepfields_file = 'LoTSS/DR2/pz_deepfields/AllFields_Pz_dat_Fllim1_{}_Final_Trapz_Pz_FewerBins.fits'.format(
+            self.config.flux_min_cut)
+        pz_deepfields = read_fits_to_pandas(os.path.join(DATA_PATH, deepfields_file))
+        z_arr = pz_deepfields['z']
+        n_arr = pz_deepfields['Nz_weighted_fields_WithSpecz_gaussian_FewerBins']
+        z_arr, n_arr = z_arr[z_arr < 6], n_arr[z_arr < 6]
+        err_arr = pz_deepfields['Nz_fields_err_combafter_WithSpecz_gaussian_FewerBins']
+        # err_arr = [err * 2 for err in err_arr]
+        np.random.seed(1623)
+        self.redshift_dists = [[np.random.normal(loc=n_arr[i], scale=err_arr[i]) for i in range(len(z_arr))] for _ in range(10000)]
+
         # Set data for photo-z distributions
         if self.config.dn_dz_model == 'photo-z':
             self.set_data()
@@ -839,11 +863,14 @@ class Experiment:
         elif self.config.lss_survey_name == 'KiDS_QSO':
             data_part = 'r-max-{}'.format(self.config.r_max)
 
-        l_range = list(self.config.l_range.values())[0]
-        correlations_part = '_'.join([
-            '-'.join(self.config.correlations_to_use),
-            'ell-{}-{}'.format(l_range[0], l_range[1]),
-        ])
+        l_range = self.config.l_range
+        correlations_part = '_'.join(['{}-{}-{}'.format(corr, l_range[corr][0], l_range[corr][1]) for corr in self.config.correlations_to_use])
+            
+        # l_range = list(self.config.l_range.values())[0]
+        # correlations_part = '_'.join([
+        #     '-'.join(self.config.correlations_to_use),
+        #     'ell-{}-{}'.format(l_range[0], l_range[1]),
+        # ])
 
         redshift_part = 'redshift_' + '-'.join(self.config.dn_dz_model.split('_'))
         for redshift_to_fit in self.config.redshifts_to_fit:
