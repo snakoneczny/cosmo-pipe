@@ -14,11 +14,12 @@ import json
 import yaml
 from tqdm import tqdm
 from scipy.interpolate import interp1d
-from scipy import signal
+from scipy.special import chdtr
+from IPython.display import display, Latex
 
 from env_config import PROJECT_PATH, DATA_PATH
 from utils import logger, process_to_overdensity_map, get_pairs, get_correlation_matrix, get_redshift_distribution, \
-    get_chi_squared, decouple_correlation, read_correlations, get_corr_mean_diff, get_correlations, \
+    get_chi_squared, decouple_correlation, read_correlations, get_correlations, \
     get_jackknife_masks, read_covariances, read_fits_to_pandas
 from data_lotss import get_lotss_data, get_lotss_map, get_lotss_redshift_distribution, LOTSS_JACKKNIFE_REGIONS
 from data_nvss import get_nvss_map, get_nvss_redshift_distribution
@@ -66,6 +67,7 @@ class Experiment:
         self.with_multicomp_noise = False
         self.chi_squared = {}
         self.sigmas = {}
+        self.probability_to_exceed = {}
         self.fields = {}
         self.workspaces = {}
         self.binnings = {}
@@ -202,7 +204,7 @@ class Experiment:
 
     def get_log_prior(self, theta):
         prior_dict = {
-            'A_sn': (0.8, 1.4),
+            'A_sn': (0.9, 1.3),
             'A_z_tail': (0.5, 2.0),
             'Omega_m': (0, np.inf),
             'sigma8': (0, np.inf),
@@ -271,13 +273,13 @@ class Experiment:
             tau_arr = np.append(tau_arr, [np.mean(tau)])
             np.save(self.tau_filename, tau_arr)
 
-            if tau_arr[-1] * 50 < emcee_sampler.iteration:
+            if tau_arr[-1] * 40 < emcee_sampler.iteration:
                 break
 
             # TODO: not working properly
             # if len(tau_arr) > 1:
             #     tau_change = np.abs(tau_arr[-2] - tau) / tau
-            #     converged = np.all(tau * 50 < emcee_sampler.iteration)
+            #     converged = np.all(tau * 40 < emcee_sampler.iteration)
             #     converged &= np.all(tau_change < 0.1)
             #     if converged:
             #         break
@@ -338,28 +340,54 @@ class Experiment:
 
         self.set_errors()
 
-        if not self.config.read_correlations_flag:
-            self.set_sigmas()
-
         self.set_inference_covariance()
         self.set_data_vector()
+
+        if not self.config.read_correlations_flag:
+            self.set_sigmas()
 
         self.are_correlations_ready = True
 
     def set_sigmas(self):
-        for corr_symbol in self.data_correlations:
+        theory_vector = []
+        for corr_symbol in self.correlation_symbols:
+            # Get data and covariance matrix
             bin_range = self.bin_range[corr_symbol]
-            data = self.data_correlations[corr_symbol][bin_range[0]:bin_range[1]]
+            noise = self.noise_decoupled[corr_symbol]
+            noise = noise[bin_range[0]:bin_range[1]] if isinstance(noise, np.ndarray) else noise
+            data = self.data_correlations[corr_symbol][bin_range[0]:bin_range[1]] - noise
+
             cov_matrix = self.covariance_matrices[self.config.error_method][corr_symbol + '-' + corr_symbol]
             cov_matrix = cov_matrix[bin_range[0]:bin_range[1], bin_range[0]:bin_range[1]]
 
+            # Get theoretical model
             model = self.theory_correlations[corr_symbol]
             model = decouple_correlation(self.workspaces[corr_symbol], model)[bin_range[0]:bin_range[1]]
+            if corr_symbol in self.config.correlations_to_use:
+                theory_vector.extend(model)
+
+            # Get chi square
             self.chi_squared[corr_symbol] = get_chi_squared(data, model, cov_matrix)
 
+            # Get sigma
             zero_chi_squared = get_chi_squared(data, 0, cov_matrix)
             diff = zero_chi_squared - self.chi_squared[corr_symbol]
             self.sigmas[corr_symbol] = math.sqrt(diff) if diff > 0 else 0
+
+            # Get PTE
+            n_free = bin_range[1] - bin_range[0]
+            self.probability_to_exceed[corr_symbol] = 1 - chdtr(n_free, self.chi_squared[corr_symbol])
+
+        # Cumulative inference statistics
+        n_free = np.sum([self.n_ells[c] for c in self.config.correlations_to_use])
+        data_vector = self.data_vector[:n_free]  # Take only correlations, drop redshift distribution if present
+        covariance_matrix = self.inference_covariance[:n_free, :n_free]
+
+        self.chi_squared['inference'] = get_chi_squared(data_vector, theory_vector, covariance_matrix)
+        zero_chi_squared = get_chi_squared(data_vector, 0, covariance_matrix)
+        diff = zero_chi_squared - self.chi_squared['inference']
+        self.sigmas['inference'] = math.sqrt(diff) if diff > 0 else 0
+        self.probability_to_exceed['inference'] = 1 - chdtr(n_free, self.chi_squared['inference'])
 
     def set_errors(self):
         for error_method in self.covariance_matrices.keys():
@@ -592,29 +620,29 @@ class Experiment:
                              self.noise_curves, self.noise_decoupled)
 
         # Scale auto-correlations for LoTSS DR2 non-optical data
-        self.with_multicomp_noise = False
+        # self.with_multicomp_noise = False
         # self.with_multicomp_noise = (
         #         self.config.lss_survey_name == 'LoTSS_DR2'
         #         and not self.config.is_optical
         #         and not self.config.lss_mask_name == 'mask_optical'
         #         and 'gg' in self.correlation_symbols
         # )
-        if self.with_multicomp_noise:
-            config_tmp = deepcopy(self.config)
-            config_tmp.lss_mask_name = 'mask_optical'
-            config_tmp.is_optical = True
-            corr_optical = read_correlations(config=config_tmp)
-            config_tmp.is_optical = False
-            corr_srl = read_correlations(config=config_tmp)
+        # if self.with_multicomp_noise:
+        #     config_tmp = deepcopy(self.config)
+        #     config_tmp.lss_mask_name = 'mask_optical'
+        #     config_tmp.is_optical = True
+        #     corr_optical = read_correlations(config=config_tmp)
+        #     config_tmp.is_optical = False
+        #     corr_srl = read_correlations(config=config_tmp)
+        #
+        #     self.multicomp_noise, self.multicomp_noise_err = get_corr_mean_diff(corr_srl, corr_optical,
+        #                                                                         self.bin_range['gg'])
+        #     self.noise_decoupled['gg'] += self.multicomp_noise
+        #     self.noise_curves['gg'] += self.multicomp_noise
 
-            self.multicomp_noise, self.multicomp_noise_err = get_corr_mean_diff(corr_srl, corr_optical,
-                                                                                self.bin_range['gg'])
-            self.noise_decoupled['gg'] += self.multicomp_noise
-            self.noise_curves['gg'] += self.multicomp_noise
-
-        # Once multicomponent shot noise is added, use A_sn to change amplitude to shot noise
-        self.noise_decoupled['gg'] *= self.config.A_sn
-        self.noise_curves['gg'] *= self.config.A_sn
+        # Once multicomponent shot noise is added, use A_sn to change amplitude of shot noise
+        # self.noise_decoupled['gg'] *= self.config.A_sn
+        # self.noise_curves['gg'] *= self.config.A_sn
 
     def set_theory_correlations(self):
         correlations_to_set = [x for x in self.all_correlation_symbols if x not in self.theory_correlations]
@@ -623,7 +651,10 @@ class Experiment:
 
         # TODO: should include all theory correlations if gaussian covariance is to work
         for correlation_symbol in self.correlation_symbols:
-            self.theory_correlations[correlation_symbol] += self.noise_curves[correlation_symbol]
+            to_add = self.noise_curves[correlation_symbol]
+            if correlation_symbol == 'gg':
+                to_add *= (self.config.A_sn - 1)
+            self.theory_correlations[correlation_symbol] += to_add
 
     def get_theory_correlations(self, config, correlation_symbols, cosmology_params=None, interpolate=False,
                                 randomize_errors=False):
@@ -811,9 +842,12 @@ class Experiment:
         self.are_data_ready = True
 
     def print_correlation_statistics(self):
-        for correlation_symbol in self.correlation_symbols:
-            print('C_{} sigma: {:.2f}'.format(correlation_symbol, self.sigmas[correlation_symbol]))
-            print('C_{} chi squared: {:.2f}'.format(correlation_symbol, self.chi_squared[correlation_symbol]))
+        for correlation_symbol in self.sigmas:
+            print(correlation_symbol)
+            display(Latex('$\sigma = {:.2f}$'.format(self.sigmas[correlation_symbol])))
+            display(Latex('$\chi^2 = {:.2f}$'.format(self.chi_squared[correlation_symbol])))
+            display(Latex('$\mathrm{{PTE}} = {:.2f}$'.format(100 * self.probability_to_exceed[correlation_symbol])))
+            print('--------------------')
 
     def set_cosmology(self):
         # Get cosmology params
@@ -840,13 +874,13 @@ class Experiment:
         self.get_redshift_dist_function = get_redshift_distribution_functions[self.config.lss_survey_name]
 
         # Get random samples of redshift distribution
-        deepfields_file = 'LoTSS/DR2/pz_deepfields/AllFields_Pz_dat_Fllim1_{}_Final_Trapz_Pz_FewerBins.fits'.format(
+        deepfields_file = 'LoTSS/DR2/pz_deepfields/AllFields_Pz_dat_Fllim1_{}_Final_Trapz_Pz.fits'.format(
             self.config.flux_min_cut)
         pz_deepfields = read_fits_to_pandas(os.path.join(DATA_PATH, deepfields_file))
         z_arr = pz_deepfields['z']
-        n_arr = pz_deepfields['Nz_weighted_fields_WithSpecz_gaussian_FewerBins']
+        n_arr = pz_deepfields['Nz_weighted_fields_Photoz_only']
         z_arr, n_arr = z_arr[z_arr < 6], n_arr[z_arr < 6]
-        err_arr = pz_deepfields['Nz_fields_err_combafter_WithSpecz_gaussian_FewerBins']
+        err_arr = pz_deepfields['Nz_fields_err_combafter_Photoz_only']
         # err_arr = [err * 2 for err in err_arr]
         np.random.seed(1623)
         self.redshift_dists = [[np.random.normal(loc=n_arr[i], scale=err_arr[i]) for i in range(len(z_arr))] for _ in range(10000)]

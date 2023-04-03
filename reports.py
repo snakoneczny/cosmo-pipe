@@ -3,7 +3,7 @@ from collections import defaultdict
 from random import random, sample
 import logging
 import itertools
-
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -52,7 +52,7 @@ def plot_sigma8(experiments, data_name):
     plt.show()
 
 
-def print_lotss_constraints_table(rows, bias_models=None, with_A_sn_arr=None, tag=None):
+def print_lotss_constraints_table(rows, bias_models=None, with_A_sn_arr=None, tag=None, with_pte=False):
     bias_models = ['constant', 'scaled', 'quadratic'] if bias_models is None else bias_models
     with_A_sn_arr = [True] if with_A_sn_arr is None else with_A_sn_arr
 
@@ -98,27 +98,35 @@ def print_lotss_constraints_table(rows, bias_models=None, with_A_sn_arr=None, ta
                 if config and samples is not None:
                     labels = config['to_infere']
 
+                    row_key = name
+                    if with_A_sn:
+                        row_key += ' + A_sn'
+
+                    best_fit_params = {}
                     for i, label in enumerate(labels):
                         mcmc = np.percentile(samples[:, i], [16, 50, 84])
                         q = np.diff(mcmc)
+                        best_fit_params[label] = mcmc[1]
 
                         if label in ['b_g', 'b_g_scaled', 'b_a', 'b_b', 'b_0', 'b_1', 'b_2', 'A_sn', 'sigma8']:
-                            # if name:
-                            row_key = name
-                            if with_A_sn:
-                                row_key += ' + A_sn'
-                            # else:
-                            #     row_key = ' + '.join(correlations)
-                            #     if 'deep-fields' in redshifts:
-                            #         row_key += ' + DF'
-                            #     if 'tomographer' in redshifts:
-                            #         row_key += ' + tomo'
-                            #     if with_A_sn:
-                            #         row_key += ' + A_sn'
-                            #     row_key += ', ell < {}, {}'.format(ell_max, matter_power_spectrum)
                             col_key = '{} {}'.format(bias_model, label)
-
                             df.loc[row_key, col_key] = '${:.2f}^{{+{:.2f}}}_{{-{:.2f}}}$'.format(mcmc[1], q[1], q[0])
+
+                    # Statistics
+                    if with_pte:
+                        best_fit_config = deepcopy(config)
+                        best_fit_config.update(best_fit_params)
+                        best_fit_config = struct(**best_fit_config)
+                        best_fit_config.read_correlations_flag = False
+                        best_fit_config.read_covariance_flag = True
+                        experiment = Experiment(best_fit_config, set_data=True, set_maps=True)
+                        experiment.set_correlations()
+
+                        df.loc[row_key, '{} $\chi^2$'.format(bias_model)] = '{:.1f}'.format(
+                            experiment.chi_squared['inference'])
+                        pte = 100 * experiment.probability_to_exceed['inference']
+                        text = '{:.0f}%' if pte >= 10 else '{:.1f}%'
+                        df.loc[row_key, '{} PTE'.format(bias_model)] = text.format(pte)
 
     display(df)
     print(df.to_latex(escape=False, na_rep=''))
@@ -139,11 +147,9 @@ def compare_biases(experiments, data_name, x_scale='log', x_max=None, y_min=None
         experiment = Experiment(config, set_data=False, set_maps=False)
 
         # Get z array
-        z_arr, n_arr = experiment.get_redshift_dist_function(config=config, normalize=False)
+        z_arr, _ = experiment.get_redshift_dist_function(config=config, normalize=False)
         if x_max:
-            idx = z_arr < x_max
-            z_arr = z_arr[idx]
-            n_arr = n_arr[idx]
+            z_arr = z_arr[z_arr < x_max]
 
         # Iterate samples
         bias_arr_store = []
@@ -172,6 +178,7 @@ def compare_biases(experiments, data_name, x_scale='log', x_max=None, y_min=None
         plt.fill_between(z_arr, bias_arr_min, bias_arr_max, alpha=alpha)
 
     # Plot mean redshift
+    z_arr, n_arr = experiment.get_redshift_dist_function(model='deep_fields', flux_cut=config.flux_min_cut, z_max=6)
     z_mean = np.average(z_arr, weights=n_arr)
     z_std = np.average((z_arr - z_mean) ** 2, weights=n_arr)
     ax = plt.gca()
@@ -219,7 +226,7 @@ def plot_radio_bias():
             (0.7, 2.1, 0.2, 0.2),
             (1.24, 3.6, 0.2, 0.2),
             (1.77, 3.5, 0.4, 0.4),
-         ]),
+        ]),
         ('Chakraborty+ 2020', [  # Elais N1
             # 400MHz AGN
             (0.91, 3.17, 0.5, 0.4),
@@ -229,13 +236,13 @@ def plot_radio_bias():
             (0.64, 1.65, 0.14, 0.14),
             # 612MHz SFG
             (0.57, 1.59, 0.2, 0.2),
-         ]),
+        ]),
         ('Mazumder+ 2022', [  # Lockman Hole
             # AGN
             (1.02, 3.74, 0.39, 0.36),
             # SFG
             (0.2, 1.06, 0.1, 0.1),
-         ])
+        ])
     ]
 
     markers = itertools.cycle(('o', 's', '>', 'H', 'D'))
@@ -244,7 +251,8 @@ def plot_radio_bias():
         for i, point in enumerate(point_array):
             z = point[0]
             b_mean = point[1]
-            plt.errorbar(z, b_mean, yerr=[[point[3]], [point[2]]], fmt=marker, color='grey', linestyle='', label=label if i == 0 else '')
+            plt.errorbar(z, b_mean, yerr=[[point[3]], [point[2]]], fmt=marker, color='grey', linestyle='',
+                         label=label if i == 0 else '')
     plt.legend()
 
 
@@ -296,6 +304,26 @@ def show_mcmc_report(experiment_name, data_name, quick=False):
         print('{} = {:.2f} (+{:.2f}, -{:.2f})'.format(labels[i], mcmc[1], q[1], q[0]))
     print('------------------------------')
 
+    # Show bias value at mean redshift
+    # for sample in samples
+    # store bias value at redshift
+    bias_values = []
+    bias_config = deepcopy(config)
+    bias_config = struct(**bias_config)
+    bias_config.read_correlations_flag = False
+    bias_config.read_covariance_flag = False
+    experiment = Experiment(bias_config, set_data=False, set_maps=False)
+    z_arr, n_arr = experiment.get_redshift_dist_function(model='deep_fields', flux_cut=config.flux_min_cut, z_max=6)
+    z_mean = np.average(z_arr, weights=n_arr)
+    for sample in samples:
+        to_update = dict(zip(labels, sample))
+        bias_config.__dict__.update(to_update)
+        # cosmology_params = experiment.get_updated_cosmology_parameters(to_update)
+        bias_values.append(experiment.get_bias(np.array([z_mean]), config=bias_config))
+    p = np.percentile(bias_values, [16, 50, 84])
+    q = np.diff(p)
+    print('b_g(z = {:.2f}) = {:.2f} (+{:.2f}, -{:.2f})'.format(z_mean, p[1], q[1], q[0]))
+    print('------------------------------')
 
     # Tau statistics
     plot_mean_tau(tau_arr)
@@ -303,22 +331,23 @@ def show_mcmc_report(experiment_name, data_name, quick=False):
     # Sigmas and chi-squared
     make_sigmas_report(config, best_fit_params)
 
-    # # Zeus traingle plot
-    # if len(labels) > 1:
-    #     # truths = [None] * len(labels)
-    #     # if 'sigma8' in labels:
-    #     #     truths[labels.index('sigma8')] = 0.811
-    #     # if 'Omega_m' in labels:
-    #     #     truths[labels.index('Omega_m')] = 0.315
-    #
-    #     samples_size = samples.shape[0]
-    #     n_smpl = 1000
-    #     samples_to_traingle = samples[np.random.randint(samples_size, size=n_smpl), :] if samples_size > n_smpl else samples
-    #
-    #     with warnings.catch_warnings():
-    #         warnings.simplefilter('ignore')
-    #         _, _ = zeus.cornerplot(samples_to_traingle, labels=labels)  # , truth=truths)
-    #         plt.show()
+    # # Zeus triangle plot
+    if len(labels) > 1:
+        # truths = [None] * len(labels)
+        # if 'sigma8' in labels:
+        #     truths[labels.index('sigma8')] = 0.811
+        # if 'Omega_m' in labels:
+        #     truths[labels.index('Omega_m')] = 0.315
+
+        samples_size = samples.shape[0]
+        n_smpl = 1000
+        samples_to_traingle = samples[np.random.randint(samples_size, size=n_smpl),
+                              :] if samples_size > n_smpl else samples
+
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            _, _ = zeus.cornerplot(samples_to_traingle, labels=labels)  # , truth=truths)
+            plt.show()
 
     if 'sigma8' in labels:
         sns.kdeplot(samples[:, labels.index('sigma8')], bw=0.5, label=config['lss_survey_name'])
@@ -463,7 +492,7 @@ def make_param_plots(config, arg_names, samples):
         for correlation_symbol in experiment.correlation_symbols:
             correlations_dict[correlation_symbol] = decouple_correlation(experiment.workspaces[correlation_symbol],
                                                                          correlations_dict[correlation_symbol])
-            if correlation_symbol == 'gg' and 'A_sn' in arg_names:
+            if correlation_symbol == 'gg':
                 correlations_dict[correlation_symbol] += (config.A_sn - 1) * experiment.noise_decoupled['gg'][0]
 
         # Store it
@@ -491,7 +520,7 @@ def make_param_plots(config, arg_names, samples):
         ell_arr = experiment.binnings[correlation_symbol].get_effective_ells()
         # ell_dense = np.arange(ell_arr[0], ell_arr[-1], 1)
         for correlation in correlations_store[correlation_symbol]:
-            plt.plot(ell_arr, correlation, 'C1', alpha=2.0/n_samples)
+            plt.plot(ell_arr, correlation, 'C1', alpha=2.0 / n_samples)
             # f = interp1d(ell_arr, correlation, kind='linear')
             # correlation_interpolated = f(ell_dense)
             # plt.plot(ell_dense, correlation_interpolated, 'C1', alpha=0.02)
@@ -511,9 +540,9 @@ def make_param_plots(config, arg_names, samples):
 
         # TODO: different limits for C_qq and C_gg
         if correlation_symbol == 'gg':
-            plt.ylim(ymin=5*1e-8, ymax=6*1e-5)
+            plt.ylim(ymin=5 * 1e-8, ymax=6 * 1e-5)
         elif correlation_symbol == 'gk':
-            plt.ylim(ymin=1e-9, ymax=2*1e-6)
+            plt.ylim(ymin=1e-9, ymax=2 * 1e-6)
         elif correlation_symbol == 'gt':
             plt.ylim(ymin=1e-12, ymax=1e-7)
             plt.xlim(xmax=config.l_range['gt'][1] * 3)
@@ -542,7 +571,7 @@ def make_param_plots(config, arg_names, samples):
         plt.figure()
 
         for n_arr in redshift_function_arr:
-            plt.plot(z_arr, n_arr, 'C1', alpha=2.0/n_samples)
+            plt.plot(z_arr, n_arr, 'C1', alpha=2.0 / n_samples)
 
         # plt.errorbar(experiment.dz_to_fit[i], experiment.dn_dz_to_fit[i], experiment.dn_dz_err_to_fit[i], fmt='C0.',
         #              label=redshift_to_fit)
@@ -568,7 +597,7 @@ def make_param_plots(config, arg_names, samples):
     # Plot bias
     plt.figure()
     for bias_arr in bias_arr_store:
-        plt.plot(z_arr, bias_arr, 'C1', alpha=2.0/n_samples)
+        plt.plot(z_arr, bias_arr, 'C1', alpha=2.0 / n_samples)
         plt.xlabel('z')
         plt.ylabel('b')
 
@@ -602,10 +631,13 @@ def make_param_plots(config, arg_names, samples):
 
         # Fit amplitude to tomographer
         f = interp1d(z_arr, bias_arr_mean, kind='cubic')
+
         def tmp_func(x, a):
             return a * f(x)
+
         p0 = [10000]
-        popt, pcov = curve_fit(tmp_func, tomographer['z'], tomographer['dNdz_b'], sigma=tomographer['dNdz_b_err'], p0=p0)
+        popt, pcov = curve_fit(tmp_func, tomographer['z'], tomographer['dNdz_b'], sigma=tomographer['dNdz_b_err'],
+                               p0=p0)
 
         # Plot
         plt.errorbar(tomographer['z'], tomographer['dNdz_b'], tomographer['dNdz_b_err'], fmt='C0.', label='Tomographer')
@@ -625,7 +657,7 @@ def make_param_plots(config, arg_names, samples):
 def plot_mean_tau(autocorr_time_arr):
     n = np.arange(1, len(autocorr_time_arr) + 1)
     plt.figure()
-    plt.plot(n, n / 50, '--k')
+    plt.plot(n, n / 40, '--k')
     plt.plot(n, autocorr_time_arr)
     plt.xlabel('number of steps')
     plt.ylabel(r'mean $\hat{\tau}$')

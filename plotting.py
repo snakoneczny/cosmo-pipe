@@ -12,6 +12,7 @@ HETDEX_LON_RANGE = [158, 234]
 HETDEX_LAT_RANGE = [43, 60]
 
 
+# TODO: update A_sn and theory correlations
 def plot_many_correlations_comparison(correlations_dict, correlation_symbol, is_raw=False, error_method='gauss',
                                       x_min=0, x_max=None, y_min=None, y_max=None, x_scale='linear', y_scale='log',
                                       title=None, rename_dict=None):
@@ -45,6 +46,7 @@ def plot_many_correlations_comparison(correlations_dict, correlation_symbol, is_
     plt.show()
 
 
+# TODO: update A_sn and theory correlations
 def plot_correlation_comparison(correlations_a, correlations_b, correlation_symbols, correlation_names,
                                 is_raw=[False, False], error_method='jackknife', x_min=0, x_max=None, y_min=None,
                                 y_max=None, x_scale='linear', y_scale='linear', title=None, with_error=True):
@@ -103,6 +105,7 @@ def plot_correlation_comparison(correlations_a, correlations_b, correlation_symb
     plt.show()
 
 
+# TODO: update A_sn and theory correlations
 def plot_correlation(experiment, correlation_symbol, x_min=0, x_max=None, y_min=None, y_max=None, x_scale='linear',
                      y_scale='linear', title=None, with_error=True, is_raw=False):
     error_method = 'jackknife' if 'jackknife' in experiment.errors else 'gauss'

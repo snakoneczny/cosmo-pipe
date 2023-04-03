@@ -159,14 +159,14 @@ def get_lotss_redshift_distribution(config=None, model='power_law', z_sfg=None, 
         A_z_tail = getattr(config, 'A_z_tail', None)
 
     if model == 'deep_fields':
-        deepfields_file = 'LoTSS/DR2/pz_deepfields/AllFields_Pz_dat_Fllim1_{}_Final_Trapz_Pz_FewerBins.fits'.format(
+        deepfields_file = 'LoTSS/DR2/pz_deepfields/AllFields_Pz_dat_Fllim1_{}_Final_Trapz_Pz.fits'.format(
             flux_cut)
         pz_deepfields = read_fits_to_pandas(os.path.join(DATA_PATH, deepfields_file))
 
         # z_arr = pz_deepfields['zbins']
         # n_arr = pz_deepfields['pz']  # pz_boot_mean
         z_arr = pz_deepfields['z']
-        n_arr = pz_deepfields['Nz_weighted_fields_WithSpecz_gaussian_FewerBins']
+        n_arr = pz_deepfields['Nz_weighted_fields_Photoz_only']
         # err_arr = pz_deepfields['Nz_fields_err_combafter_Photoz_only']
 
         # n_arr = signal.savgol_filter(n_arr, 101, 5)  # window size, polynomial order

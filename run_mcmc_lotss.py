@@ -8,16 +8,19 @@ from experiment import Experiment
 # mock
 to_run = [
     # Cosmology
-    (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 202, 502, 'halofit', ['sigma8'], False),
+    # (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 202, 502, 'halofit', ['sigma8'], False),
 #     (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 502, 802, 'halofit', ['sigma8'], False),
 #     (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 502, 802, 'linear', ['sigma8'], False),
+#     (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], True, 202, 502, 'halofit', ['sigma8'], False),
 
-    # C_gg & C_gk
+    # Bias
     # (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 202, 502, 'halofit', [], False),
+
+    # C_gg & C_gk tests
     # (2.0, 5.0, ['gg'], ['deep_fields'], True, 202, 502, 'halofit', [], False),
     # (2.0, 5.0, ['gk'], ['deep_fields'], False, 202, 502, 'halofit', [], False),
 
-    # ell range and linear vs halofit
+    # ell range and linear vs halofit tests
     # (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 502, 802, 'halofit', [], False),
     # (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 202, 502, 'linear', [], False),
     # (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 502, 802, 'linear', [], False),
@@ -26,7 +29,7 @@ to_run = [
     # (1.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 202, 502, 'halofit', [], False),
     # (1.0, 7.5, ['gg', 'gk'], ['deep_fields'], True, 202, 502, 'halofit', [], False),
     # (1.5, 5.0, ['gg', 'gk'], ['deep_fields'], True, 202, 502, 'halofit', [], False),
-    # (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], True, 202, 502, 'halofit', [], False),
+    (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], True, 202, 502, 'halofit', [], False),
     # (2.0, 7.5, ['gg', 'gk'], ['deep_fields'], True, 202, 502, 'halofit', [], False),
 
     # Mock tests
@@ -37,10 +40,7 @@ to_run = [
 ]
 
 # bias_models = ['constant', 'scaled', 'quadratic']
-# bias_models = ['constant', 'scaled']
-# bias_models = ['constant']
 bias_models = ['scaled']
-# bias_models = ['quadratic']
 
 # Read input arguments
 parser = argparse.ArgumentParser()
