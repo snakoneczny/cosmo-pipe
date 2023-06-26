@@ -9,17 +9,17 @@ LoTSS_DR2:
   lss_mask_name: mask_inner  # mask_inner, mask_optical
   # mask_coverage, mask_default, mask_noise_75percent, mask_noise_99_percent, mask_noise_median
   nside: 512
-  flux_min_cut: 2.0     # 1.0, 1.5, 2.0
-  signal_to_noise: 5.0  # 5.0, 7.5
+  flux_min_cut: 1.5     # 1.5, 2.0
+  signal_to_noise: 7.5  # 5.0, 7.5
 
   # Correlations
   read_correlations_flag: False
   read_covariance_flag: True
   error_method: jackknife  # jackknife, gauss
   l_range: {
-    gg: [52, 202],  # 252, 502, 802
+    gg: [52, 252],  # 252, 502, 802
     gk: [52, 502],  # 252, 502, 802
-    gt: [2, 34],
+    gt: [2, 50],
   }
   ells_per_bin: {
     gg: 50,
@@ -58,9 +58,9 @@ LoTSS_DR2:
   b_a: {2.0: 0.5, 1.5: 0.5, 1.0: 0.5}
   b_b: {2.0: 1.0, 1.5: 1.0, 1.0: 1.0}
   # quadratic
-  b_0: {2.0: 1.0, 1.5: 1.0, 1.0: 1.0}
-  b_1: {2.0: 2.0, 1.5: 2.0, 1.0: 2.0}
-  b_2: {2.0: -0.5, 1.5: -0.5, 1.0: -0.5}
+  b_0: {2.0: 1.5, 1.5: 1.5}
+  b_1: {2.0: 1.0, 1.5: 1.0}
+  b_2: {2.0: 0.1, 1.5: 0.1}
   # tomographer
   b_eff_tomo: {2: 2.5, 1.5: 2.5, 1.0: 2.5}
 
@@ -76,7 +76,7 @@ LoTSS_DR2:
   continue_sampling: False
   redshifts_to_fit: [deep_fields]  # deep_fields, tomographer
   correlations_to_use: [gg, gk]  # gg, gk, gt
-  # sigma8, Omega_m, b_g, b_g_scaled, b_a, b_b, b_2, b_1, b_0, A_sn, z_0, gamma, z_tail, z_sfg, a, r, offset, a_2, r_2, n, A_z_tail
+  # sigma_8, Omega_m, b_g, b_g_scaled, b_a, b_b, b_2, b_1, b_0, A_sn, z_0, gamma, z_tail, z_sfg, a, r, offset, a_2, r_2, n, A_z_tail
   to_infere: [sigma8, b_g_scaled, A_sn, z_sfg, a, r]  # , z_0, gamma, z_tail, A, B, C, A_z]
   max_iterations: 50000
   n_walkers: 32

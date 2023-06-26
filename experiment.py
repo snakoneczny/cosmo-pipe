@@ -170,9 +170,9 @@ class Experiment:
 
         # Get theory correlations and bin spectra using coupling matrices in workspaces
         try:
-            _, _, correlations_dict = self.get_theory_correlations(config, self.config.correlations_to_use,
-                                                                   interpolate=True, cosmology_params=cosmology_params,
-                                                                   randomize_errors=True)
+            _, _, correlations_dict = self.get_theory_correlations(
+                config, self.config.correlations_to_use, interpolate=True, cosmology_params=cosmology_params,
+                randomize_errors=True)
         except:
             return -np.inf
 
@@ -204,7 +204,7 @@ class Experiment:
 
     def get_log_prior(self, theta):
         prior_dict = {
-            'A_sn': (0.9, 1.3),
+            'A_sn': (0.8, 1.4),
             'A_z_tail': (0.5, 2.0),
             'Omega_m': (0, np.inf),
             'sigma8': (0, np.inf),
@@ -407,9 +407,9 @@ class Experiment:
                                                     self.config.flux_min_cut, self.config.signal_to_noise,
                                                     self.config.lss_mask_name.split('_')[1]))
                 tomographer = pd.read_csv(tomographer_file)
-                self.dz_to_fit.append(tomographer['z'][:-1])
-                self.dn_dz_to_fit.append(tomographer['dNdz_b'][:-1])
-                self.dn_dz_err_to_fit.append(tomographer['dNdz_b_err'][:-1])
+                self.dz_to_fit.append(tomographer['z'][:-2])
+                self.dn_dz_to_fit.append(tomographer['dNdz_b'][:-2])
+                self.dn_dz_err_to_fit.append(tomographer['dNdz_b_err'][:-2])
 
                 # Scale tomographer with D(z), it will allow to skip the scaling process in the get_log_prob function
                 # if self.config.bias_model == 'scaled':
@@ -419,14 +419,20 @@ class Experiment:
 
             # TODO: use get redshift function
             elif redshift_to_fit == 'deep_fields':
-                deepfields_file = 'LoTSS/DR2/pz_deepfields/AllFields_Pz_dat_Fllim1_{}_Final_Trapz_Pz.fits'.format(
-                    self.config.flux_min_cut)
-                pz_deepfields = read_fits_to_pandas(os.path.join(DATA_PATH, deepfields_file))
+                # deepfields_file = 'LoTSS/DR2/pz_deepfields/AllFields_Pz_dat_Fllim1_{}_Final_Trapz_Pz.fits'.format(
+                #     self.config.flux_min_cut)
+                # pz_deepfields = read_fits_to_pandas(os.path.join(DATA_PATH, deepfields_file))
+                # idx = pz_deepfields['z'] < 6
+                # self.dz_to_fit.append(pz_deepfields['z'][idx])
+                # self.dn_dz_to_fit.append(pz_deepfields['Nz_weighted_fields_Photoz_only'][idx])
+                # self.dn_dz_err_to_fit.append(pz_deepfields['Nz_fields_err_combafter_Photoz_only'][idx])
 
-                idx = pz_deepfields['z'] < 6
-                self.dz_to_fit.append(pz_deepfields['z'][idx])
-                self.dn_dz_to_fit.append(pz_deepfields['Nz_weighted_fields_Photoz_only'][idx])
-                self.dn_dz_err_to_fit.append(pz_deepfields['Nz_fields_err_combafter_Photoz_only'][idx])
+                pz_file = os.path.join(DATA_PATH, 'LoTSS/DR2/deep_fields/pz_{}mJy_{}SNR.csv'.format(
+                    self.config.flux_min_cut, self.config.signal_to_noise))
+                pz_df = pd.read_csv(pz_file)
+                self.dz_to_fit.append(pz_df['z'])
+                self.dn_dz_to_fit.append(pz_df['pz_all'])
+                self.dn_dz_err_to_fit.append(pz_df['pz_err_all'])
 
                 # Smoothing
                 # self.dn_dz_to_fit = signal.savgol_filter(self.dn_dz_to_fit, 101, 5)  # window size, polynomial order
@@ -874,16 +880,16 @@ class Experiment:
         self.get_redshift_dist_function = get_redshift_distribution_functions[self.config.lss_survey_name]
 
         # Get random samples of redshift distribution
-        deepfields_file = 'LoTSS/DR2/pz_deepfields/AllFields_Pz_dat_Fllim1_{}_Final_Trapz_Pz.fits'.format(
-            self.config.flux_min_cut)
-        pz_deepfields = read_fits_to_pandas(os.path.join(DATA_PATH, deepfields_file))
-        z_arr = pz_deepfields['z']
-        n_arr = pz_deepfields['Nz_weighted_fields_Photoz_only']
-        z_arr, n_arr = z_arr[z_arr < 6], n_arr[z_arr < 6]
-        err_arr = pz_deepfields['Nz_fields_err_combafter_Photoz_only']
-        # err_arr = [err * 2 for err in err_arr]
-        np.random.seed(1623)
-        self.redshift_dists = [[np.random.normal(loc=n_arr[i], scale=err_arr[i]) for i in range(len(z_arr))] for _ in range(10000)]
+        # deepfields_file = 'LoTSS/DR2/pz_deepfields/AllFields_Pz_dat_Fllim1_{}_Final_Trapz_Pz.fits'.format(
+        #     self.config.flux_min_cut)
+        # pz_deepfields = read_fits_to_pandas(os.path.join(DATA_PATH, deepfields_file))
+        # z_arr = pz_deepfields['z']
+        # n_arr = pz_deepfields['Nz_weighted_fields_Photoz_only']
+        # z_arr, n_arr = z_arr[z_arr < 6], n_arr[z_arr < 6]
+        # err_arr = pz_deepfields['Nz_fields_err_combafter_Photoz_only']
+        # # err_arr = [err * 2 for err in err_arr]
+        # np.random.seed(1623)
+        # self.redshift_dists = [[np.random.normal(loc=n_arr[i], scale=err_arr[i]) for i in range(len(z_arr))] for _ in range(10000)]
 
         # Set data for photo-z distributions
         if self.config.dn_dz_model == 'photo-z':

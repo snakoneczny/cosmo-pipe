@@ -4,43 +4,56 @@ import copy
 from utils import get_config
 from experiment import Experiment
 
-# Minimum flux (mJy), minimum signal to noise, correlation symbol, redshifts, with A_sn, ell_max, matter power spectrum,
-# mock
+# Parameter order: minimum flux (mJy), minimum signal to noise, correlation symbols, redshifts, with A_sn, ell_max,
+# matter power spectrum, cosmology params, is mock
+
+# Cosmology
+# bias_models = ['scaled']
+# to_run = [
+    # (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], False, 152, 502, 'halofit', ['sigma8'], False),
+    # (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], False, 152, 502, 'halofit', ['sigma8'], False),
+# ]
+
+# C_gg & C_gk tests
+# bias_models = ['constant', 'scaled']
+# to_run = [
+#     (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], True, 252, 502, 'halofit', [], False),
+#     (1.5, 7.5, ['gg'], ['deep_fields'], True, 252, 502, 'halofit', [], False),
+#     (1.5, 7.5, ['gk'], ['deep_fields'], False, 252, 502, 'halofit', [], False),
+# ]
+
+# ell range and linear vs halofit tests
+# bias_models = ['scaled', 'quadratic']
+bias_models = ['quadratic']
 to_run = [
-    # Cosmology
-    # (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 202, 502, 'halofit', ['sigma8'], False),
-#     (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 502, 802, 'halofit', ['sigma8'], False),
-#     (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 502, 802, 'linear', ['sigma8'], False),
-#     (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], True, 202, 502, 'halofit', ['sigma8'], False),
-
-    # Bias
-    # (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 202, 502, 'halofit', [], False),
-
-    # C_gg & C_gk tests
-    # (2.0, 5.0, ['gg'], ['deep_fields'], True, 202, 502, 'halofit', [], False),
-    # (2.0, 5.0, ['gk'], ['deep_fields'], False, 202, 502, 'halofit', [], False),
-
-    # ell range and linear vs halofit tests
-    # (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 502, 802, 'halofit', [], False),
-    # (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 202, 502, 'linear', [], False),
-    # (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 502, 802, 'linear', [], False),
-
-    # Data tests
-    # (1.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 202, 502, 'halofit', [], False),
-    # (1.0, 7.5, ['gg', 'gk'], ['deep_fields'], True, 202, 502, 'halofit', [], False),
-    # (1.5, 5.0, ['gg', 'gk'], ['deep_fields'], True, 202, 502, 'halofit', [], False),
-    (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], True, 202, 502, 'halofit', [], False),
-    # (2.0, 7.5, ['gg', 'gk'], ['deep_fields'], True, 202, 502, 'halofit', [], False),
-
-    # Mock tests
-    # (1.5, 7.5, ['gg'], [], True, 202, 'linear', [], True),
-    # (1.5, 7.5, ['gg'], [], True, 502, 'linear', [], True),
-    # (1.5, 7.5, ['gg'], [], True, 202, 'halofit', [], True),
-    # (1.5, 7.5, ['gg'], [], True, 502, 'halofit', [], True),
+    (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], False, 152, 502, 'halofit', [], False),
+    # (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], True, 502, 802, 'halofit', [], False),
+    # (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], True, 252, 502, 'linear', [], False),
+    # (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], True, 502, 802, 'linear', [], False),
 ]
 
-# bias_models = ['constant', 'scaled', 'quadratic']
-bias_models = ['scaled']
+# C_gg ell range test
+# bias_models = ['scaled']
+# to_run = [
+#     (1.5, 7.5, ['gg'], ['deep_fields'], True, 152, 502, 'halofit', [], False),
+#     # (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], True, 152, 502, 'halofit', [], False),
+# ]
+
+# Data tests
+# bias_models = ['scaled']
+# to_run = [
+#     (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 252, 502, 'halofit', [], False),
+# ]
+
+# Mock tests
+# bias_models = ['scaled']
+# to_run = [
+#     (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], True, 252, 502, 'halofit', [], False),
+#     (1.5, 7.5, ['gg'], [], True, 252, 'linear', [], True),
+#     (1.5, 7.5, ['gg'], [], True, 502, 'linear', [], True),
+#     (1.5, 7.5, ['gg'], [], True, 252, 'halofit', [], True),
+#     (1.5, 7.5, ['gg'], [], True, 502, 'halofit', [], True),
+# ]
 
 # Read input arguments
 parser = argparse.ArgumentParser()
@@ -57,13 +70,14 @@ config.read_correlations_flag = False
 config.read_covariance_flag = True
 config.max_iterations = 10000
 
-for i, (flux_cut, snr_cut, correlation_symbols, redshifts, with_A_sn, ell_max_gg, ell_max_gk, matter_power_spectrum, cosmo_params,
-        is_mock) in enumerate(to_run):
+for i, (flux_cut, snr_cut, correlation_symbols, redshifts, with_A_sn, ell_max_gg, ell_max_gk, matter_power_spectrum,
+        cosmo_params, is_mock) in enumerate(to_run):
     for j, bias_model in enumerate(bias_models):
         print('Setup {}/{}: bias {}/{}'.format(i + 1, len(to_run), j + 1, len(bias_models)))
         print(
             '{} mJy, {} SNR, correlations: {}, redshifts: {}, with A_sn = {}, ell_max_gg = {}, ell_max_gk = {}, matter power spectrum = {}, bias_model = {}'.format(
-                flux_cut, snr_cut, correlation_symbols, redshifts, with_A_sn, ell_max_gg, ell_max_gk, matter_power_spectrum, bias_model
+                flux_cut, snr_cut, correlation_symbols, redshifts, with_A_sn, ell_max_gg, ell_max_gk,
+                matter_power_spectrum, bias_model
             ))
 
         config.is_mock = is_mock

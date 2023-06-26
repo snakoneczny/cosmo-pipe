@@ -138,7 +138,8 @@ def get_redshift_distributions(data_optical, data_skads):
 
 def get_lotss_redshift_distribution(config=None, model='power_law', z_sfg=None, a=None, r=None, a_2=None, r_2=None,
                                     offset=None, n=1, z_0=None, gamma=None, z_tail=None, A=None, B=None, C=None,
-                                    A_z=None, flux_cut=None, A_z_tail=None, z_arr=None, z_max=6, normalize=False):
+                                    A_z=None, flux_cut=None, snr_cut=None, A_z_tail=None, z_arr=None, z_max=7,
+                                    normalize=False):
     if config:
         model = config.dn_dz_model
         z_sfg = getattr(config, 'z_sfg', None)
@@ -156,17 +157,22 @@ def get_lotss_redshift_distribution(config=None, model='power_law', z_sfg=None, 
         C = getattr(config, 'C', None)
         A_z = getattr(config, 'A_z', None)
         flux_cut = getattr(config, 'flux_min_cut', None)
+        snr_cut = getattr(config, 'signal_to_noise', None)
         A_z_tail = getattr(config, 'A_z_tail', None)
 
     if model == 'deep_fields':
-        deepfields_file = 'LoTSS/DR2/pz_deepfields/AllFields_Pz_dat_Fllim1_{}_Final_Trapz_Pz.fits'.format(
-            flux_cut)
-        pz_deepfields = read_fits_to_pandas(os.path.join(DATA_PATH, deepfields_file))
+        pz_file = os.path.join(DATA_PATH, 'LoTSS/DR2/deep_fields/pz_{}mJy_{}SNR.csv'.format(flux_cut, snr_cut))
+        pz_df = pd.read_csv(pz_file)
+        # deepfields_file = 'LoTSS/DR2/pz_deepfields/AllFields_Pz_dat_Fllim1_{}_Final_Trapz_Pz.fits'.format(
+        #     flux_cut)
+        # pz_deepfields = read_fits_to_pandas(os.path.join(DATA_PATH, deepfields_file))
 
         # z_arr = pz_deepfields['zbins']
         # n_arr = pz_deepfields['pz']  # pz_boot_mean
-        z_arr = pz_deepfields['z']
-        n_arr = pz_deepfields['Nz_weighted_fields_Photoz_only']
+        # z_arr = pz_deepfields['z']
+        # n_arr = pz_deepfields['Nz_weighted_fields_Photoz_only']
+        z_arr = pz_df['z']
+        n_arr = pz_df['pz_all']
         # err_arr = pz_deepfields['Nz_fields_err_combafter_Photoz_only']
 
         # n_arr = signal.savgol_filter(n_arr, 101, 5)  # window size, polynomial order
@@ -176,8 +182,8 @@ def get_lotss_redshift_distribution(config=None, model='power_law', z_sfg=None, 
         filename = 'LoTSS/DR2/tomographer/{}mJy_{}SNR_srl_catalog_inner.csv'.format(
             config.flux_min_cut, config.signal_to_noise)
         tomographer = pd.read_csv(os.path.join(DATA_PATH, filename))
-        z_arr = tomographer['z'][:-1]
-        n_arr = tomographer['dNdz_b'][:-1]
+        z_arr = tomographer['z'][:-2]
+        n_arr = tomographer['dNdz_b'][:-2]
 
     else:
         if z_arr is None:
@@ -198,7 +204,8 @@ def get_lotss_redshift_distribution(config=None, model='power_law', z_sfg=None, 
         elif model == 'z_tail':
             # z_0 = 0.1
             # gamma = 3.5
-            n_arr = ((z_arr / z_0) ** 2) / (1 + (z_arr / z_0) ** 2) / (1 + (z_arr / z_tail) ** gamma)  # + A * np.exp(-np.power(z_arr - B, 2) / (2 * C ** 2)))
+            n_arr = ((z_arr / z_0) ** 2) / (1 + (z_arr / z_0) ** 2) / (
+                        1 + (z_arr / z_tail) ** gamma)  # + A * np.exp(-np.power(z_arr - B, 2) / (2 * C ** 2)))
         else:
             raise Exception('Not known redshift distribution model: {}'.format(model))
 
@@ -227,17 +234,20 @@ def read_lotss_noise_weight_map(nside, data_release, flux_min_cut, signal_to_noi
     # weight_map = hp.ud_grade(weight_map, nside)
 
     folder = 'LoTSS/DR{}/weight_maps_randoms'
-    file_path_in = os.path.join(DATA_PATH, folder, 'Randoms_input_Nside_{}_Fl_{:.1f}mJy.fits')
+    # file_path_in = os.path.join(DATA_PATH, folder, 'Randoms_input_Nside_256_AllFl.fits')
     file_path_out = os.path.join(DATA_PATH, folder,
-                                 'Randoms_output_Nside_{}_SNR_{:.1f}_Fl_{:.1f}mJy_withFluxShift.fits')
+                                 'Randoms_output_Nside_256_SNR_{:.1f}_Fl_{:.1f}mJy_withFluxShift.fits')
 
-    file_path_in = file_path_in.format(data_release, nside, flux_min_cut)
-    file_path_out = file_path_out.format(data_release, nside, signal_to_noise, flux_min_cut)
+    # file_path_in = file_path_in.format(data_release, flux_min_cut)
+    file_path_out = file_path_out.format(data_release, signal_to_noise, flux_min_cut)
 
-    map_in = hp.read_map(file_path_in)
+    # map_in = hp.read_map(file_path_in)
     map_out = hp.read_map(file_path_out)
 
-    weight_map = np.array([map_out[i] / map_in[i] if map_in[i] != 0 else 0 for i in range(len(map_in))])
+    # weight_map = np.array([map_out[i] / map_in[i] if (np.isnan(map_in[i]) == False) & (map_in[i] != 0) else 0 for i in
+    #                        range(len(map_in))])
+
+    weight_map = map_out / np.max(map_out)
     weight_map = hp.ud_grade(weight_map, nside)
 
     return weight_map
@@ -508,7 +518,7 @@ def get_lotss_data(data_release, flux_min_cut=2, signal_to_noise=None, optical=T
 
         # Signal to noise ratio cut
         if signal_to_noise:
-            data = data.loc[data['Total_flux'] / data['E_Total_flux'] > signal_to_noise]
+            data = data.loc[data['Peak_flux'] / data['Isl_rms'] > signal_to_noise]
             print('Signal to noise > {}: {}'.format(signal_to_noise, data.shape))
 
         # TODO: delete or permanently add to code

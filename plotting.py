@@ -187,7 +187,7 @@ def plot_correlation_matrix(experiment):
     n_bins = sum([experiment.n_ells[corr_symbol] for corr_symbol in experiment.config.correlations_to_use])
     fig = plt.figure()
     ax = fig.add_subplot(111)
-    cax = ax.matshow(experiment.inference_correlation[:n_bins, :n_bins], interpolation=None)
+    cax = ax.matshow(experiment.inference_correlation[:n_bins, :n_bins], interpolation=None, cmap='YlGnBu_r')
     fig.colorbar(cax)
 
     half_ticks = []
@@ -218,7 +218,7 @@ def pretty_print_corr_symbol(correlation_symbol):
     math_symbols = {'g': 'g', 'k': '\kappa', 't': 'T'}
     symbol_a = correlation_symbol[0]
     symbol_b = correlation_symbol[1]
-    return r'${} \times {}$'.format(math_symbols[symbol_a], math_symbols[symbol_b])
+    return r'${}{}$'.format(math_symbols[symbol_a], math_symbols[symbol_b])
 
 
 # TODO: regions should be just positive values

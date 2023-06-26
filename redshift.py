@@ -1,5 +1,6 @@
 import os
 import copy
+import random
 
 import yaml
 import numpy as np
@@ -7,6 +8,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import pyccl as ccl
 from scipy.integrate import simps
+from tqdm.notebook import tqdm
 
 from env_config import PROJECT_PATH
 from scipy.optimize import curve_fit

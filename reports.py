@@ -15,41 +15,41 @@ from copy import deepcopy
 import h5py
 from scipy.interpolate import interp1d
 import emcee
-import zeus
 import scipy.stats as stats
 from scipy.optimize import curve_fit
+from getdist import MCSamples, plots
 
 from env_config import PROJECT_PATH, DATA_PATH
 from experiment import Experiment
-from utils import struct, get_config, decouple_correlation
+from utils import struct, get_config, decouple_correlation, get_percentiles
 from bias import get_sherwin_qso_bias
 
 
-def plot_sigma8(experiments, data_name):
-    logging.basicConfig(level=os.environ.get('LOGLEVEL', 'ERROR'))
-
-    max_val = 0
-    for experiment_label, experiment_name in experiments:
-        config, samples, log_prob_samples, tau_arr = get_samples(experiment_name, data_name, print_stats=False)
-        labels = config['to_infere']
-
-        g = sns.kdeplot(samples[:, labels.index('sigma8')], bw=0.5, label=experiment_label)
-
-        # get distplot line points
-        line = g.get_lines()[-1]
-        yd = line.get_ydata()
-        max_val = max(max_val, yd.max())
-
-    # Planck results
-    x = np.linspace(0.4, 1.4, 100)
-    y_planck = stats.norm.pdf(x, 0.811, 0.006)
-    y_planck *= max_val / y_planck.max()
-    plt.plot(x, y_planck, label='Planck')
-
-    plt.xlabel('$\sigma_8$')
-    plt.ylabel('probability')
-    plt.legend()
-    plt.show()
+# def plot_sigma8(experiments, data_name):
+#     logging.basicConfig(level=os.environ.get('LOGLEVEL', 'ERROR'))
+#
+#     max_val = 0
+#     for experiment_label, experiment_name in experiments:
+#         config, samples, log_prob_samples, tau_arr = get_samples(experiment_name, data_name, print_stats=False)
+#         labels = config['to_infere']
+# 
+#         g = sns.kdeplot(samples[:, labels.index('sigma8')], bw=0.5, label=experiment_label)
+#
+#         # get distplot line points
+#         line = g.get_lines()[-1]
+#         yd = line.get_ydata()
+#         max_val = max(max_val, yd.max())
+#
+#     # Planck results
+#     x = np.linspace(0.4, 1.4, 100)
+#     y_planck = stats.norm.pdf(x, 0.811, 0.006)
+#     y_planck *= max_val / y_planck.max()
+#     plt.plot(x, y_planck, label='Planck')
+#
+#     plt.xlabel('$\sigma_8$')
+#     plt.ylabel('probability')
+#     plt.legend()
+#     plt.show()
 
 
 def print_lotss_constraints_table(rows, bias_models=None, with_A_sn_arr=None, tag=None, with_pte=False):
@@ -177,13 +177,13 @@ def compare_biases(experiments, data_name, x_scale='log', x_max=None, y_min=None
         plt.plot(z_arr, bias_arr_mean, label=experiment_label)
         plt.fill_between(z_arr, bias_arr_min, bias_arr_max, alpha=alpha)
 
-    # Plot mean redshift
-    z_arr, n_arr = experiment.get_redshift_dist_function(model='deep_fields', flux_cut=config.flux_min_cut, z_max=6)
-    z_mean = np.average(z_arr, weights=n_arr)
-    z_std = np.average((z_arr - z_mean) ** 2, weights=n_arr)
+    # Plot median redshift
+    z_arr, n_arr = experiment.get_redshift_dist_function(model='deep_fields', flux_cut=config.flux_min_cut, z_max=7,
+                                                         normalize=True)
+    p = get_percentiles(z_arr, n_arr, [16, 50, 84])
     ax = plt.gca()
-    plt.axvline(x=z_mean, linestyle='--', label='mean redshift', alpha=0.8, color='lightsteelblue')
-    ax.axvspan(z_mean - z_std / 2, z_mean + z_std / 2, alpha=0.3, color='lightsteelblue')
+    plt.axvline(x=p[1], linestyle='--', label='median redshift', alpha=0.8, color='lightsteelblue')
+    ax.axvspan(p[0], p[2], alpha=0.3, color='lightsteelblue')
 
     if add_qsos:
         z_arr, b_arr, b_err = get_sherwin_qso_bias()
@@ -245,7 +245,7 @@ def plot_radio_bias():
         ])
     ]
 
-    markers = itertools.cycle(('o', 's', '>', 'H', 'D'))
+    markers = itertools.cycle(('o', 's', '^', 'd'))
     for label, point_array in to_plot:
         marker = next(markers)
         for i, point in enumerate(point_array):
@@ -272,7 +272,7 @@ def compare_redshifts(experiments, data_name):
         best_fit_config = struct(**best_fit_config)
         experiment = Experiment(best_fit_config, set_data=False, set_maps=False)
 
-        z_arr, n_arr = experiment.get_redshift_dist_function(z_max=6, normalize=True)
+        z_arr, n_arr = experiment.get_redshift_dist_function(z_max=7, normalize=True)
         bias_arr = experiment.get_bias(z_arr)
         n_arr *= bias_arr
 
@@ -281,17 +281,27 @@ def compare_redshifts(experiments, data_name):
     plt.axhline(y=0, color='gray', linestyle='-')
     plt.legend()
     plt.xlabel('z')
-    plt.ylabel('b * dN/dz')
+    plt.ylabel('$b_g \cdot dN/dz$')
     plt.show()
+
+
+def pretty_print(strings):
+    pretty_dict = {
+        'b_g': 'b_g',
+        'b_g_scaled': 'b_{g,D}',
+        'A_sn': 'A_{sn}',
+        'z_sfg': 'z_0',
+        'sigma8': '\sigma_8',
+    }
+    return [pretty_dict[str] if str in pretty_dict else str for str in strings]
 
 
 def show_mcmc_report(experiment_name, data_name, quick=False):
     logging.basicConfig(level=os.environ.get('LOGLEVEL', 'ERROR'))
     config, samples, log_prob_samples, tau_arr = get_samples(experiment_name, data_name, print_stats=True)
 
-    # TODO: delete
-    # config['l_range']['gt'] = [2, 36]
-    # config['ells_per_bin']['gt'] = 16
+    # Adjust range on C_gt
+    config['l_range']['gt'] = [2, 50]  # 36, 50
 
     # Final estimate
     best_fit_params = {}
@@ -304,78 +314,94 @@ def show_mcmc_report(experiment_name, data_name, quick=False):
         print('{} = {:.2f} (+{:.2f}, -{:.2f})'.format(labels[i], mcmc[1], q[1], q[0]))
     print('------------------------------')
 
-    # Show bias value at mean redshift
-    # for sample in samples
-    # store bias value at redshift
+    # sigma_8
+    if 'sigma8' in labels:
+        plt.figure()
+
+        p = np.percentile(samples[:, labels.index('sigma8')], [16, 50, 84])
+        to_plot = [
+            ('Planck', 0.811, 0.006, 0.006),
+            ('KiDS', 0.76, 0.025, 0.025),
+            ('DES', 0.733, 0.05, 0.05),
+            ('LoTSS DR2', p[1], p[2] - p[1], p[1] - p[0]),
+            ('LoTSS DR1', 0.69, 0.14, 0.21),
+        ]
+        for i, (survey_name, mean, err_plus, err_minus) in enumerate(to_plot):
+            plt.errorbar(mean, i + 1, xerr=[[err_minus], [err_plus]], fmt='o', label=survey_name,
+                         markersize=6, capsize=3)
+            plt.axvline(x=mean, linestyle='--', alpha=0.6, color=plt.gca().lines[-1].get_color(), linewidth=1)
+
+        plt.xlabel('$\sigma_8$')
+        plt.yticks([1, 2, 3, 4, 5], ['Planck', 'KiDS', 'DES', 'LoTSS DR2', 'LoTSS DR1'])
+        # plt.legend()
+        plt.show()
+
+    # Tau statistics
+    plot_mean_tau(tau_arr)
+
+    # Samples history
+    # plot_samples_history(labels, samples, log_prob_samples)
+
+    # Triangle plot
+    if len(labels) > 1:
+        names_getdist = config['to_infere']
+        labels_getdist = pretty_print(names_getdist)
+        samples_getdist = MCSamples(samples=samples, names=names_getdist, labels=labels_getdist)
+        g = plots.get_subplot_plotter()
+        g.settings.title_limit_fontsize = 14
+        g.triangle_plot([samples_getdist], filled=True, title_limit=1, markers={'sigma8': 0.8111})
+        plt.show()
+
+    if quick:
+        pass
+
+    # Show bias value at median redshift
     bias_values = []
     bias_config = deepcopy(config)
     bias_config = struct(**bias_config)
     bias_config.read_correlations_flag = False
     bias_config.read_covariance_flag = False
     experiment = Experiment(bias_config, set_data=False, set_maps=False)
-    z_arr, n_arr = experiment.get_redshift_dist_function(model='deep_fields', flux_cut=config.flux_min_cut, z_max=6)
-    z_mean = np.average(z_arr, weights=n_arr)
+    z_arr, n_arr = experiment.get_redshift_dist_function(model='deep_fields', flux_cut=config['flux_min_cut'], z_max=7,
+                                                         normalize=True)
+    z_median = get_percentiles(z_arr, n_arr, [50])[0]
     for sample in samples:
         to_update = dict(zip(labels, sample))
         bias_config.__dict__.update(to_update)
         # cosmology_params = experiment.get_updated_cosmology_parameters(to_update)
-        bias_values.append(experiment.get_bias(np.array([z_mean]), config=bias_config))
+        bias_values.append(experiment.get_bias(np.array([z_median]), config=bias_config))
     p = np.percentile(bias_values, [16, 50, 84])
     q = np.diff(p)
-    print('b_g(z = {:.2f}) = {:.2f} (+{:.2f}, -{:.2f})'.format(z_mean, p[1], q[1], q[0]))
+    print('b_g(z = {:.2f}) = {:.2f} (+{:.2f}, -{:.2f})'.format(z_median, p[1], q[1], q[0]))
     print('------------------------------')
-
-    # Tau statistics
-    plot_mean_tau(tau_arr)
 
     # Sigmas and chi-squared
     make_sigmas_report(config, best_fit_params)
 
-    # # Zeus triangle plot
-    if len(labels) > 1:
-        # truths = [None] * len(labels)
-        # if 'sigma8' in labels:
-        #     truths[labels.index('sigma8')] = 0.811
-        # if 'Omega_m' in labels:
-        #     truths[labels.index('Omega_m')] = 0.315
-
-        samples_size = samples.shape[0]
-        n_smpl = 1000
-        samples_to_traingle = samples[np.random.randint(samples_size, size=n_smpl),
-                              :] if samples_size > n_smpl else samples
-
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore')
-            _, _ = zeus.cornerplot(samples_to_traingle, labels=labels)  # , truth=truths)
-            plt.show()
-
-    if 'sigma8' in labels:
-        sns.kdeplot(samples[:, labels.index('sigma8')], bw=0.5, label=config['lss_survey_name'])
-        plot_major_sigma8()
-        plt.xlabel('$\sigma_8$')
-        plt.ylabel('probability')
-        plt.legend()
-        plt.show()
-
-    # Samples history
-    plot_samples_history(labels, samples, log_prob_samples)
-
     # Correlation, redshift and bias plots
-    if not quick:
-        make_param_plots(config, labels, samples)
+    make_param_plots(config, labels, samples)
 
 
-def plot_major_sigma8():
-    to_plot = [
-        ('Planck', 0.811, 0.006),
-        ('KiDS', 0.76, 0.025),
-        ('DES', 0.733, 0.05),
-    ]
-    ax = plt.gca()
-    for label, mean, error in to_plot:
-        plt.axvline(x=mean, linestyle='--', label=label, alpha=0.8, color=next(ax._get_lines.prop_cycler)['color'])
-        ax.axvspan(mean - error, mean + error, alpha=0.1, color=plt.gca().lines[-1].get_color())
-    plt.legend()
+# def plot_major_sigma8(lotss_dr1=True):
+#     to_plot = [
+#         ('Planck', 0.811, 0.006, 0.006),
+#         ('KiDS', 0.76, 0.025, 0.025),
+#         ('DES', 0.733, 0.05, 0.05),
+#         ('LoTSS DR1', 0.69, 0.14, 0.21),
+#     ]
+#     ax = plt.gca()
+#     for label, mean, error_plus, error_minus in to_plot:
+#         if label == 'LoTSS DR1' and lotss_dr1:
+#             color = 'grey'
+#             alpha_line = 0.7
+#             alpha_region = 0.1
+#         else:
+#             color = next(ax._get_lines.prop_cycler)['color']
+#             alpha_line = 0.7
+#             alpha_region = 0.2
+#         plt.axvline(x=mean, linestyle='--', label=label, alpha=alpha_line, color=color)
+#         ax.axvspan(mean - error_minus, mean + error_plus, alpha=alpha_region, color=color)
+#     plt.legend()
 
 
 def get_samples(experiment_name, data_name, print_stats=False):
@@ -555,10 +581,14 @@ def make_param_plots(config, arg_names, samples):
         plt.xlim(xmin=2)
         plt.yscale('log')
         plt.xlabel('$\\ell$', fontsize=16)
-        plt.ylabel('$C_\\ell^{{{}}}$'.format(correlation_symbol), fontsize=16)
+        if correlation_symbol == 'gt':
+            y_label = '$C_\\ell^{gT}\\,\\,[{\\rm K}_{\\rm CMB}]$'
+        else:
+            y_label = '$C_\\ell^{{{}}}$'.format(correlation_symbol)
+        plt.ylabel(y_label, fontsize=16)
 
         handles, labels = plt.gca().get_legend_handles_labels()
-        line = Line2D([0], [0], label='samples', color='C1')
+        line = Line2D([0], [0], label='model', color='C1')
         vertical_line = Line2D([], [], color='C2', marker='|', linestyle='None', label='$\\ell$ range')
         handles.extend([line, vertical_line])
         plt.legend(loc='upper right', ncol=2, labelspacing=0.005, handles=handles)
@@ -583,15 +613,15 @@ def make_param_plots(config, arg_names, samples):
         plt.axhline(y=0, color='gray', linestyle='-')
 
         handles, labels = plt.gca().get_legend_handles_labels()
-        line = Line2D([0], [0], label='samples', color='C1')
+        line = Line2D([0], [0], label='model', color='C1')
         handles.extend([line])
         plt.legend(handles=handles)
 
         plt.xlabel('z')
         if redshift_to_fit == 'tomographer':
-            plt.ylabel('b * dN/dz')
+            plt.ylabel('$b_g \cdot dN/dz$')
         else:
-            plt.ylabel('dN/dz')
+            plt.ylabel('p(z)')
         plt.show()
 
     # Plot bias
@@ -602,7 +632,7 @@ def make_param_plots(config, arg_names, samples):
         plt.ylabel('b')
 
     handles, labels = plt.gca().get_legend_handles_labels()
-    line = Line2D([0], [0], label='samples', color='C1')
+    line = Line2D([0], [0], label='model', color='C1')
     handles.extend([line])
     plt.legend(handles=handles)
     plt.show()
@@ -612,6 +642,9 @@ def make_param_plots(config, arg_names, samples):
         config.flux_min_cut, config.signal_to_noise))
     if os.path.exists(filename):
         tomographer = pd.read_csv(filename)
+        tomo_z_arr = tomographer['z'][:-1]
+        tomo_nb_arr = tomographer['dNdz_b'][:-1]
+        tomo_err_arr = tomographer['dNdz_b_err'][:-1]
 
         # Find mean and one sigma regions
         redshift_function_arr = redshift_functions_store['deep_fields']
@@ -636,11 +669,11 @@ def make_param_plots(config, arg_names, samples):
             return a * f(x)
 
         p0 = [10000]
-        popt, pcov = curve_fit(tmp_func, tomographer['z'], tomographer['dNdz_b'], sigma=tomographer['dNdz_b_err'],
+        popt, pcov = curve_fit(tmp_func, tomo_z_arr, tomo_nb_arr, sigma=tomo_err_arr,
                                p0=p0)
 
-        # Plot
-        plt.errorbar(tomographer['z'], tomographer['dNdz_b'], tomographer['dNdz_b_err'], fmt='C0.', label='Tomographer')
+        # Plo
+        plt.errorbar(tomo_z_arr, tomo_nb_arr, tomo_err_arr, fmt='C0.', label='Tomographer')
 
         a = popt[0]
         plt.plot(z_arr, np.multiply(bias_arr_mean, a), 'C1', label='LoTSS DR2 x CMB')
@@ -650,7 +683,7 @@ def make_param_plots(config, arg_names, samples):
 
         plt.legend()
         plt.xlabel('z')
-        plt.ylabel('$b \cdot dN/dz$')
+        plt.ylabel('$b_g \cdot dN/dz$')
         plt.show()
 
 
