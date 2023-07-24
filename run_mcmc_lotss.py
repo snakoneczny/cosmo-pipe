@@ -8,11 +8,26 @@ from experiment import Experiment
 # matter power spectrum, cosmology params, is mock
 
 # Cosmology
-# bias_models = ['scaled']
-# to_run = [
-    # (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], False, 152, 502, 'halofit', ['sigma8'], False),
-    # (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], False, 152, 502, 'halofit', ['sigma8'], False),
-# ]
+bias_models = ['scaled']
+to_run = [
+    (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], True, 252, 502, 'halofit', ['sigma8'], False),
+    (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 252, 502, 'halofit', ['sigma8'], False),
+
+    (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], True, 252, 502, 'linear', ['sigma8'], False),
+    (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 252, 502, 'linear', ['sigma8'], False),
+
+    (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], False, 152, 502, 'halofit', ['sigma8'], False),
+    (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], False, 152, 502, 'halofit', ['sigma8'], False),
+
+    (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], False, 152, 502, 'linear', ['sigma8'], False),
+    (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], False, 152, 502, 'linear', ['sigma8'], False),
+
+    (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], True, 502, 802, 'halofit', ['sigma8'], False),
+    (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 502, 802, 'halofit', ['sigma8'], False),
+
+    (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], True, 502, 802, 'linear', ['sigma8'], False),
+    (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 502, 802, 'linear', ['sigma8'], False),
+]
 
 # C_gg & C_gk tests
 # bias_models = ['constant', 'scaled']
@@ -24,25 +39,24 @@ from experiment import Experiment
 
 # ell range and linear vs halofit tests
 # bias_models = ['scaled', 'quadratic']
-bias_models = ['quadratic']
-to_run = [
-    (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], False, 152, 502, 'halofit', [], False),
-    # (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], True, 502, 802, 'halofit', [], False),
-    # (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], True, 252, 502, 'linear', [], False),
-    # (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], True, 502, 802, 'linear', [], False),
-]
-
-# C_gg ell range test
-# bias_models = ['scaled']
 # to_run = [
-#     (1.5, 7.5, ['gg'], ['deep_fields'], True, 152, 502, 'halofit', [], False),
-#     # (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], True, 152, 502, 'halofit', [], False),
+#     (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], True, 252, 502, 'halofit', [], False),
+#     (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], True, 502, 802, 'halofit', [], False),
+#     (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], True, 252, 502, 'linear', [], False),
+#     (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], True, 502, 802, 'linear', [], False),
 # ]
 
 # Data tests
 # bias_models = ['scaled']
 # to_run = [
 #     (2.0, 5.0, ['gg', 'gk'], ['deep_fields'], True, 252, 502, 'halofit', [], False),
+# ]
+
+# C_gg ell range test
+# bias_models = ['scaled']
+# to_run = [
+#     (1.5, 7.5, ['gg'], ['deep_fields'], False, 152, 502, 'halofit', [], False),
+#     (1.5, 7.5, ['gg', 'gk'], ['deep_fields'], False, 152, 502, 'halofit', [], False),
 # ]
 
 # Mock tests

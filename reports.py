@@ -340,7 +340,7 @@ def show_mcmc_report(experiment_name, data_name, quick=False):
     plot_mean_tau(tau_arr)
 
     # Samples history
-    # plot_samples_history(labels, samples, log_prob_samples)
+    plot_samples_history(labels, samples, log_prob_samples)
 
     # Triangle plot
     if len(labels) > 1:
@@ -676,8 +676,10 @@ def make_param_plots(config, arg_names, samples):
         plt.errorbar(tomo_z_arr, tomo_nb_arr, tomo_err_arr, fmt='C0.', label='Tomographer')
 
         a = popt[0]
-        plt.plot(z_arr, np.multiply(bias_arr_mean, a), 'C1', label='LoTSS DR2 x CMB')
-        plt.fill_between(z_arr, np.multiply(bias_arr_min, a), np.multiply(bias_arr_max, a), color='C1', alpha=0.2)
+        idx = z_arr < 6
+        plt.plot(z_arr[idx], np.multiply(bias_arr_mean, a)[idx], 'C1', label='LoTSS DR2 x CMB')
+        plt.fill_between(z_arr[idx], np.multiply(bias_arr_min, a)[idx], np.multiply(bias_arr_max, a)[idx],
+                         color='C1', alpha=0.2)
 
         plt.axhline(y=0, color='gray', linestyle='-')
 
