@@ -25,33 +25,6 @@ from utils import struct, get_config, decouple_correlation, get_percentiles
 from bias import get_sherwin_qso_bias
 
 
-# def plot_sigma8(experiments, data_name):
-#     logging.basicConfig(level=os.environ.get('LOGLEVEL', 'ERROR'))
-#
-#     max_val = 0
-#     for experiment_label, experiment_name in experiments:
-#         config, samples, log_prob_samples, tau_arr = get_samples(experiment_name, data_name, print_stats=False)
-#         labels = config['to_infere']
-# 
-#         g = sns.kdeplot(samples[:, labels.index('sigma8')], bw=0.5, label=experiment_label)
-#
-#         # get distplot line points
-#         line = g.get_lines()[-1]
-#         yd = line.get_ydata()
-#         max_val = max(max_val, yd.max())
-#
-#     # Planck results
-#     x = np.linspace(0.4, 1.4, 100)
-#     y_planck = stats.norm.pdf(x, 0.811, 0.006)
-#     y_planck *= max_val / y_planck.max()
-#     plt.plot(x, y_planck, label='Planck')
-#
-#     plt.xlabel('$\sigma_8$')
-#     plt.ylabel('probability')
-#     plt.legend()
-#     plt.show()
-
-
 def print_lotss_constraints_table(rows, bias_models=None, with_A_sn_arr=None, tag=None, with_pte=False):
     bias_models = ['constant', 'scaled', 'quadratic'] if bias_models is None else bias_models
     with_A_sn_arr = [True] if with_A_sn_arr is None else with_A_sn_arr
@@ -122,8 +95,8 @@ def print_lotss_constraints_table(rows, bias_models=None, with_A_sn_arr=None, ta
                         experiment = Experiment(best_fit_config, set_data=True, set_maps=True)
                         experiment.set_correlations()
 
-                        df.loc[row_key, '{} $\chi^2$'.format(bias_model)] = '{:.1f}'.format(
-                            experiment.chi_squared['inference'])
+                        df.loc[row_key, '{} $\chi^2_{{\nu}}$'.format(bias_model)] = '{:.1f}'.format(
+                            experiment.chi_squared_reduced['inference'])
                         pte = 100 * experiment.probability_to_exceed['inference']
                         text = '{:.0f}%' if pte >= 10 else '{:.1f}%'
                         df.loc[row_key, '{} PTE'.format(bias_model)] = text.format(pte)
@@ -135,7 +108,7 @@ def print_lotss_constraints_table(rows, bias_models=None, with_A_sn_arr=None, ta
 def compare_biases(experiments, data_name, x_scale='log', x_max=None, y_min=None, y_max=None, title=None,
                    add_qsos=False, add_radio=False):
     n_exp = len(experiments)
-    alpha = 1.0 / n_exp
+    alpha = 0.25
 
     plt.figure()
     for experiment_label, experiment_name in experiments:
@@ -182,8 +155,8 @@ def compare_biases(experiments, data_name, x_scale='log', x_max=None, y_min=None
                                                          normalize=True)
     p = get_percentiles(z_arr, n_arr, [16, 50, 84])
     ax = plt.gca()
-    plt.axvline(x=p[1], linestyle='--', label='median redshift', alpha=0.8, color='lightsteelblue')
-    ax.axvspan(p[0], p[2], alpha=0.3, color='lightsteelblue')
+    plt.axvline(x=p[1], linestyle='--', label='median redshift', alpha=0.9, color='lightsteelblue')
+    ax.axvspan(p[0], p[2], alpha=0.2, color='lightsteelblue')
 
     if add_qsos:
         z_arr, b_arr, b_err = get_sherwin_qso_bias()
@@ -194,24 +167,16 @@ def compare_biases(experiments, data_name, x_scale='log', x_max=None, y_min=None
         plot_radio_bias()
 
     plt.title(title)
-    plt.legend(loc='upper left', ncol=2, labelspacing=0.1)
+    plt.legend(loc='upper left', ncol=2, labelspacing=0.1, framealpha=1.0)
     plt.xlabel('log(1 + z)' if x_scale == 'log' else 'z')
     plt.ylabel('$b_g(z)$')
     plt.ylim((y_min, y_max))
-    plt.grid()
     plt.show()
 
 
 def plot_radio_bias():
     # Mean/median redshift, bias, +, -
     to_plot = [
-        # ('Lindsay+ 2014', [  # ???
-        #     # (1.09, 1.12, 0.03, 0.03),
-        #     (0.33, 0.59, 0.02, 0.01),
-        #     (0.79, 0.91, 0.02, 0.03),
-        #     (1.33, 1.21, 0.04, 0.04),
-        #     (2.16, 2.23, 0.12, 0.12),
-        # ]),
         ('Nusser & Tiwari 2015', [  # NVSS
             # function form: 0.33 z2 + 0.85z + 1.6 (z max 2 u Alonso, 3 u Hale)
             (0.5, 2.093, 0.164, 0.109),
@@ -242,16 +207,19 @@ def plot_radio_bias():
             (1.02, 3.74, 0.39, 0.36),
             # SFG
             (0.2, 1.06, 0.1, 0.1),
-        ])
+        ]),
+        ('Hale+ 2023', [  # LoTSS DR2
+            (0.89, 2.81, 0.24, 0.22),
+        ]),
     ]
 
-    markers = itertools.cycle(('o', 's', '^', 'd'))
+    markers = itertools.cycle(('o', 's', 'd', '>', 'X'))
     for label, point_array in to_plot:
         marker = next(markers)
         for i, point in enumerate(point_array):
             z = point[0]
             b_mean = point[1]
-            plt.errorbar(z, b_mean, yerr=[[point[3]], [point[2]]], fmt=marker, color='grey', linestyle='',
+            plt.errorbar(z, b_mean, yerr=[[point[3]], [point[2]]], fmt=marker, color='grey', linestyle='', mfc='white',
                          label=label if i == 0 else '')
     plt.legend()
 
@@ -311,7 +279,7 @@ def show_mcmc_report(experiment_name, data_name, quick=False):
         mcmc = np.percentile(samples[:, i], [16, 50, 84])
         best_fit_params[labels[i]] = mcmc[1]
         q = np.diff(mcmc)
-        print('{} = {:.2f} (+{:.2f}, -{:.2f})'.format(labels[i], mcmc[1], q[1], q[0]))
+        print('{} = {:.3f} (+{:.3f}, -{:.3f})'.format(labels[i], mcmc[1], q[1], q[0]))
     print('------------------------------')
 
     # sigma_8
@@ -593,7 +561,6 @@ def make_param_plots(config, arg_names, samples):
         handles.extend([line, vertical_line])
         plt.legend(loc='upper right', ncol=2, labelspacing=0.005, handles=handles)
 
-        plt.grid()
         plt.show()
 
     # Plot redshift
@@ -619,7 +586,9 @@ def make_param_plots(config, arg_names, samples):
 
         plt.xlabel('z')
         if redshift_to_fit == 'tomographer':
+            plt.yticks([])
             plt.ylabel('$b_g \cdot dN/dz$')
+            
         else:
             plt.ylabel('p(z)')
         plt.show()
@@ -686,6 +655,7 @@ def make_param_plots(config, arg_names, samples):
         plt.legend()
         plt.xlabel('z')
         plt.ylabel('$b_g \cdot dN/dz$')
+        plt.yticks([])
         plt.show()
 
 

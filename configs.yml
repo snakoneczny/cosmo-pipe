@@ -17,8 +17,8 @@ LoTSS_DR2:
   read_covariance_flag: True
   error_method: jackknife  # jackknife, gauss
   l_range: {
-    gg: [52, 252],  # 252, 502, 802
-    gk: [52, 502],  # 252, 502, 802
+    gg: [52, 252],  # 252, 502
+    gk: [52, 502],  # 502, 802
     gt: [2, 50],
   }
   ells_per_bin: {

@@ -66,6 +66,7 @@ class Experiment:
         self.data_correlations = {}
         self.with_multicomp_noise = False
         self.chi_squared = {}
+        self.chi_squared_reduced = {}
         self.sigmas = {}
         self.probability_to_exceed = {}
         self.fields = {}
@@ -350,6 +351,9 @@ class Experiment:
 
     def set_sigmas(self):
         theory_vector = []
+        possible_params = ['sigma8', 'Omega_m', 'b_g_scaled', 'b_g', 'b_0', 'b_1', 'b_2']
+        n_params = sum([1 for p in possible_params if p in self.config.to_infere])
+
         for corr_symbol in self.correlation_symbols:
             # Get data and covariance matrix
             bin_range = self.bin_range[corr_symbol]
@@ -368,6 +372,13 @@ class Experiment:
 
             # Get chi square
             self.chi_squared[corr_symbol] = get_chi_squared(data, model, cov_matrix)
+            
+            # Get reduced chi square
+            n_data = bin_range[1] - bin_range[0]
+            n_free = n_data - n_params
+            if corr_symbol == 'gg' and 'A_sn' in self.config.to_infere:
+                n_free -= 1
+            self.chi_squared_reduced[corr_symbol] = self.chi_squared[corr_symbol] / n_free
 
             # Get sigma
             zero_chi_squared = get_chi_squared(data, 0, cov_matrix)
@@ -375,15 +386,22 @@ class Experiment:
             self.sigmas[corr_symbol] = math.sqrt(diff) if diff > 0 else 0
 
             # Get PTE
-            n_free = bin_range[1] - bin_range[0]
             self.probability_to_exceed[corr_symbol] = 1 - chdtr(n_free, self.chi_squared[corr_symbol])
 
         # Cumulative inference statistics
-        n_free = np.sum([self.n_ells[c] for c in self.config.correlations_to_use])
-        data_vector = self.data_vector[:n_free]  # Take only correlations, drop redshift distribution if present
-        covariance_matrix = self.inference_covariance[:n_free, :n_free]
+        n_data = np.sum([self.n_ells[c] for c in self.config.correlations_to_use])
+        n_free = n_data - n_params
+        if 'A_sn' in self.config.to_infere:
+            n_free -= 1
 
+        # Take only correlations, drop redshift distribution if present
+        data_vector = self.data_vector[:n_data]  
+        covariance_matrix = self.inference_covariance[:n_data, :n_data]
+
+        # Get chi-squared for correlations used in the inference
         self.chi_squared['inference'] = get_chi_squared(data_vector, theory_vector, covariance_matrix)
+        self.chi_squared_reduced['inference'] = self.chi_squared['inference'] / n_free
+        
         zero_chi_squared = get_chi_squared(data_vector, 0, covariance_matrix)
         diff = zero_chi_squared - self.chi_squared['inference']
         self.sigmas['inference'] = math.sqrt(diff) if diff > 0 else 0

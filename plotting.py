@@ -188,7 +188,8 @@ def plot_correlation_matrix(experiment):
     fig = plt.figure()
     ax = fig.add_subplot(111)
     cax = ax.matshow(experiment.inference_correlation[:n_bins, :n_bins], interpolation=None, cmap='YlGnBu_r')
-    fig.colorbar(cax)
+    cbar = fig.colorbar(cax)
+    cbar.set_label('Correlation coefficient')
 
     half_ticks = []
     lines = []
