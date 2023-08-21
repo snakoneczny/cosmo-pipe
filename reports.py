@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 from matplotlib.lines import Line2D
+from matplotlib.legend_handler import HandlerTuple
 import seaborn as sns
 from tqdm import tqdm_notebook
 from copy import deepcopy
@@ -167,10 +168,10 @@ def compare_biases(experiments, data_name, x_scale='log', x_max=None, y_min=None
         plot_radio_bias()
 
     plt.title(title)
-    plt.legend(loc='upper left', ncol=2, labelspacing=0.1, framealpha=1.0)
     plt.xlabel('log(1 + z)' if x_scale == 'log' else 'z')
     plt.ylabel('$b_g(z)$')
     plt.ylim((y_min, y_max))
+    plt.xlim((0, x_max))
     plt.show()
 
 
@@ -179,49 +180,81 @@ def plot_radio_bias():
     to_plot = [
         ('Nusser & Tiwari 2015', [  # NVSS
             # function form: 0.33 z2 + 0.85z + 1.6 (z max 2 u Alonso, 3 u Hale)
-            (0.5, 2.093, 0.164, 0.109),
+            ('mixed', 0.5, 2.093, 0.164, 0.109),
         ]),
         ('Hale+ 2018', [  # COSMOS
-            # All
-            # (1.16, 2.7, 0.1, 0.1),
-            # SFGs
-            (0.62, 1.5, 0.1, 0.2),
-            (1.07, 2.3, 0.2, 0.2),
-            # AGNs
-            (0.7, 2.1, 0.2, 0.2),
-            (1.24, 3.6, 0.2, 0.2),
-            (1.77, 3.5, 0.4, 0.4),
+            # ('all', 1.16, 2.7, 0.1, 0.1),
+            ('AGN', 0.7, 2.1, 0.2, 0.2),
+            ('AGN', 1.24, 3.6, 0.2, 0.2),
+            ('AGN', 1.77, 3.5, 0.4, 0.4),
+            ('SFG', 0.62, 1.5, 0.1, 0.2),
+            ('SFG', 1.07, 2.3, 0.2, 0.2),
+        ]),
+        ('Alonso+ 2020', [  # LoTSS DR1
+            ('mixed', 0.62, 1.95, 0.45, 0.45),
         ]),
         ('Chakraborty+ 2020', [  # Elais N1
-            # 400MHz AGN
-            (0.91, 3.17, 0.5, 0.4),
-            # 612MHz AGN
-            (0.85, 2.6, 0.6, 0.5),
-            # 400MHz SFG
-            (0.64, 1.65, 0.14, 0.14),
-            # 612MHz SFG
-            (0.57, 1.59, 0.2, 0.2),
+            # 400MHz
+            ('AGN', 0.91, 3.17, 0.5, 0.4),
+            ('SFG', 0.64, 1.65, 0.14, 0.14),
+            # 612MHz
+            ('AGN', 0.85, 2.6, 0.6, 0.5),
+            ('SFG', 0.57, 1.59, 0.2, 0.2),
         ]),
         ('Mazumder+ 2022', [  # Lockman Hole
-            # AGN
-            (1.02, 3.74, 0.39, 0.36),
-            # SFG
-            (0.2, 1.06, 0.1, 0.1),
+            ('AGN', 1.02, 3.74, 0.39, 0.36),
+            ('SFG', 0.2, 1.06, 0.1, 0.1),
         ]),
         ('Hale+ 2023', [  # LoTSS DR2
-            (0.89, 2.81, 0.24, 0.22),
+            ('mixed', 0.89, 2.81, 0.24, 0.22),
         ]),
     ]
 
-    markers = itertools.cycle(('o', 's', 'd', '>', 'X'))
+    markers = itertools.cycle(('o', 's', 'd', '>', 'X', 'p'))
+    fill_dict = {
+        'mixed': 'black',
+        'AGN': 'white',
+        'SFG': 'grey',
+    }
     for label, point_array in to_plot:
         marker = next(markers)
+
+        # Make points
+        populations_added = []
         for i, point in enumerate(point_array):
-            z = point[0]
-            b_mean = point[1]
-            plt.errorbar(z, b_mean, yerr=[[point[3]], [point[2]]], fmt=marker, color='grey', linestyle='', mfc='white',
-                         label=label if i == 0 else '')
-    plt.legend()
+            population, z, b_mean = point[0], point[1], point[2]
+            mfc = fill_dict[population]
+            label_to_plot = '' if population in populations_added else label
+            populations_added.append(population)
+            color = 'grey' if mfc == 'white' else 'black'
+            plt.errorbar(z, b_mean, yerr=[[point[4]], [point[3]]], fmt=marker, color=color, mfc=mfc,
+                         label=label_to_plot)
+
+    # Make legend magic
+    ax = plt.gca()
+    handles, labels = ax.get_legend_handles_labels()
+    labels_interest = [point[0] for point in to_plot]
+    labels_new = []
+    handles_new = []
+
+    # Copy markers that do not change
+    for i in range(len(labels)):
+        if labels[i] not in labels_interest:
+            handles_new.append(handles[i])
+            labels_new.append(labels[i])
+
+    # Process markers from literature
+    for label_interest in labels_interest:
+        handles_to_add = []
+        for i in range(len(labels)):
+            if labels[i] == label_interest:
+                handles_to_add.append(handles[i])
+        handles_new.append(tuple(handles_to_add))
+        labels_new.append(label_interest)
+
+    ax.legend(handles_new, labels_new, handler_map={tuple: HandlerTuple(ndivide=None)},
+              loc='upper left', ncol=2, labelspacing=0.1, framealpha=1.0)
+
 
 
 def compare_redshifts(experiments, data_name):

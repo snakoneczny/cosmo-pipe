@@ -94,9 +94,6 @@ def get_cmb_lensing_map(nside=None):
     fl[:3*nside] = 1
     klm = hp.sphtfunc.almxfl(klm, fl)
 
-    # mmax = lmax = nside * 3 - 1
-    # n_max = int(mmax * (2 * lmax + 1 - mmax) / 2 + lmax + 1)
-    # klm = klm[:n_max]
     map = hp.alm2map(klm, nside=nside)
     mask = hp.read_map(mask_path)
 
@@ -107,7 +104,6 @@ def get_cmb_lensing_map(nside=None):
 
     # Adjust
     mask = hp.ud_grade(mask, nside_out=nside)
-    # map = hp.ud_grade(map, nside_out=nside)
 
     map = get_masked_map(map, mask)
     mask = get_masked_map(mask, mask)
