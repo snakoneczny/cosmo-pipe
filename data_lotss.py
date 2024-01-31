@@ -57,8 +57,8 @@ def get_redshift_distributions(data_optical, data_skads):
 
         # Deep fields
         pz_deepfields = read_fits_to_pandas(os.path.join(DATA_PATH,
-                                                         'LoTSS/DR2/pz_deepfields/Pz_booterrors_wsum_deepfields_{}mJy.fits'.format(
-                                                             ''.join(str(flux_cut).split('.')))))
+                            'LoTSS/DR2/pz_deepfields/Pz_booterrors_wsum_deepfields_{}mJy.fits'.format(
+                                ''.join(str(flux_cut).split('.')))))
 
         key = 'deep fields'
         redshift_distributions[key][flux_cut] = {'z': pz_deepfields['zbins'], 'pz': pz_deepfields['pz']}

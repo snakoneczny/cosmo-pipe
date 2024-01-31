@@ -190,9 +190,6 @@ def plot_radio_bias():
             ('SFG', 0.62, 1.5, 0.1, 0.2),
             ('SFG', 1.07, 2.3, 0.2, 0.2),
         ]),
-        ('Alonso+ 2020', [  # LoTSS DR1
-            ('mixed', 0.62, 1.95, 0.45, 0.45),
-        ]),
         ('Chakraborty+ 2020', [  # Elais N1
             # 400MHz
             ('AGN', 0.91, 3.17, 0.5, 0.4),
@@ -200,6 +197,9 @@ def plot_radio_bias():
             # 612MHz
             ('AGN', 0.85, 2.6, 0.6, 0.5),
             ('SFG', 0.57, 1.59, 0.2, 0.2),
+        ]),
+        ('Alonso+ 2021', [  # LoTSS DR1
+            ('mixed', 0.62, 1.95, 0.45, 0.45),
         ]),
         ('Mazumder+ 2022', [  # Lockman Hole
             ('AGN', 1.02, 3.74, 0.39, 0.36),
@@ -210,11 +210,12 @@ def plot_radio_bias():
         ]),
     ]
 
-    markers = itertools.cycle(('o', 's', 'd', '>', 'X', 'p'))
-    fill_dict = {
-        'mixed': 'black',
-        'AGN': 'white',
-        'SFG': 'grey',
+    markers = itertools.cycle(('o', 's', 'd', 'X', '>', 'p'))
+    # Border, fill
+    color_dict = {
+        'AGN': ('grey', 'white'),
+        'mixed': ('black', 'grey'),
+        'SFG': ('black', 'white'),
     }
     for label, point_array in to_plot:
         marker = next(markers)
@@ -223,10 +224,9 @@ def plot_radio_bias():
         populations_added = []
         for i, point in enumerate(point_array):
             population, z, b_mean = point[0], point[1], point[2]
-            mfc = fill_dict[population]
+            color, mfc = color_dict[population]
             label_to_plot = '' if population in populations_added else label
             populations_added.append(population)
-            color = 'grey' if mfc == 'white' else 'black'
             plt.errorbar(z, b_mean, yerr=[[point[4]], [point[3]]], fmt=marker, color=color, mfc=mfc,
                          label=label_to_plot)
 
