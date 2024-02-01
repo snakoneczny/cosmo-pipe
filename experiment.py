@@ -2,6 +2,7 @@ import os
 from collections import defaultdict
 from functools import partial
 import math
+import copy
 from copy import deepcopy
 
 import numpy as np
@@ -16,6 +17,7 @@ from tqdm import tqdm
 from scipy.interpolate import interp1d
 from scipy.special import chdtr
 from IPython.display import display, Latex
+import healpy as hp
 
 from env_config import PROJECT_PATH, DATA_PATH
 from utils import logger, process_to_overdensity_map, get_pairs, get_correlation_matrix, get_redshift_distribution, \
@@ -507,6 +509,17 @@ class Experiment:
 
         # Get jackknife regions
         jacked_masks = get_jackknife_masks(masks['g'], LOTSS_JACKKNIFE_REGIONS, nside=self.config.nside)
+        
+        # Caroline Jackknife regions; keep commented out
+        # jackknife_data = np.load(os.path.join(DATA_PATH,
+        #                     'LoTSS/DR2/Caroline_jackknife/Caroline_Field_PIX_RA_Dec.npy'), allow_pickle=True)
+        # jacked_masks = []
+        # for field in jackknife_data:
+        #     new_mask = copy.copy(masks['g'])
+        #     indices = field[1][:, 0].astype(int)
+        #     new_mask[indices] = 0
+        #     jacked_masks.append(new_mask)
+
         jacked_correlations = dict([(corr_symbol, []) for corr_symbol in self.correlation_symbols])
         jacked_noise = dict([(corr_symbol, []) for corr_symbol in self.correlation_symbols])
         n_regions = len(jacked_masks)
@@ -538,6 +551,18 @@ class Experiment:
 
             # Dependence normalizing factor
             norm_factors.append(jacked_mask_size / original_mask_size)
+
+        # Save jackknife correlations; keep commented out
+        # to_save = {}
+        # for corr_symbol in correlations:
+        #     to_save['Cl_{}'.format(corr_symbol)] = [arr.tolist() for arr in jacked_correlations[corr_symbol]]
+        # to_save['nl_gg'] = [arr.tolist() for arr in jacked_noise['gg']]
+        # file_path = os.path.join(PROJECT_PATH, 'outputs/Caroline_jackknife/jackknife_correlations.json')
+        # out_file = open(file_path, 'w')
+        # json.dump(to_save, out_file, indent=4)
+        # out_file.close()
+        # print('Jackknife correlations saved to: {}'.format(file_path))
+        # exit()
 
         mean_correlations = dict(
             [(corr_symbol, np.mean(jacked_correlations[corr_symbol], axis=0)) for corr_symbol in jacked_correlations])

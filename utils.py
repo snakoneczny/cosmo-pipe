@@ -330,7 +330,7 @@ def save_correlations(experiment):
     correlations_filename = get_correlations_filename(experiment.config)
     folder_path = os.path.join(
         PROJECT_PATH, 'outputs/correlations/{}/{}'.format(experiment.config.lss_survey_name, correlations_filename))
-    file_path = os.path.join(folder_path, '{}.csv'.format(correlations_filename))
+    file_path = os.path.join(folder_path, '{}.json'.format(correlations_filename))
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
 

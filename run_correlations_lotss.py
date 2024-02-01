@@ -19,7 +19,7 @@ config.redshifts_to_fit = []
 print(config.__dict__)
 
 # Iterate parameters
-for flux_min_cut, signal_to_noise in [(2.0, 5.0), (1.5, 7.5)]:
+for flux_min_cut, signal_to_noise in [(1.5, 7.5)]:  # (2.0, 5.0)
     print('Processing: flux > {}mJy, SNR > {}'.format(flux_min_cut, signal_to_noise))
     config.flux_min_cut = flux_min_cut
     config.signal_to_noise = signal_to_noise
@@ -27,7 +27,8 @@ for flux_min_cut, signal_to_noise in [(2.0, 5.0), (1.5, 7.5)]:
     # Radio in inner mask
     experiment = Experiment(config, set_data=True, set_maps=True)
     experiment.set_correlations()
-    save_correlations(experiment)
+
+    # save_correlations(experiment)
 
     # Mock
     # if flux_min_cut == 1.5 and signal_to_noise == 7.5:
